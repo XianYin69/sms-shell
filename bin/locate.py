@@ -26,6 +26,20 @@ def find_base():
             p = _base_of(b)
             if p: return p
     return None
+def find_core():
+    """批34：壳仓 standalone 时找回核仓（env SMS_CORE→config.sms_skill），供 sys.path 补核模块。"""
+    conf = os.path.join(_home(), "config", "config.json")
+    cands = ([os.environ["SMS_CORE"]] if os.environ.get("SMS_CORE") else [])
+    if os.path.isfile(conf):
+        try: cands.append(json.load(open(conf, encoding="utf-8-sig")).get("sms_skill") or "")
+        except Exception: pass
+    for b in cands:
+        if b:
+            p = _base_of(b)
+            if p and not os.path.isfile(os.path.join(p, "scripts", "gateway.py")):
+                continue
+            if p: return p
+    return None
 def _skill_base():
     p = find_base()
     if p is None: print("未定位到 skill_manage_system：运行过 deploy.py 会登记 sms_skill 到 <SMS_HOME>/config/config.json；也可设 env SMS_SKILL=<skill 绝对路径>", file=sys.stderr); sys.exit(1)
@@ -40,6 +54,9 @@ def _shell():
     p = os.path.join(_scripts(), "shell.py")
     if not os.path.isfile(p): print("缺失 shell.py：" + p, file=sys.stderr); sys.exit(1)
     return p
+CORE = find_core()
+if CORE and CORE != _base_of(os.path.normpath(os.path.join(HERE, ".."))):
+    sys.path.insert(0, os.path.join(CORE, "scripts"))
 if __name__ == "__main__":
     if sys.argv[1:2] == ["api"]:
         sys.argv = ["api.py"] + sys.argv[2:]

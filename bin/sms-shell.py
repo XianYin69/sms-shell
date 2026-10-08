@@ -18,6 +18,9 @@ except Exception:
     pass
 try:
     sys.path.insert(0, os.path.join(BASE, "scripts")) if BASE else None
+    _core = locate.find_core() if "locate" in dir() else None
+    if _core and os.path.join(_core, "scripts") != os.path.join(BASE or "", "scripts"):
+        sys.path.insert(0, os.path.join(_core, "scripts"))
     import session_reg as _sr; os.environ["SMS_SESSION"] = _sr.ensure("client", os.getpid(), "壳" + str(os.getpid()))
 except Exception: pass
 args = sys.argv[1:]; os.environ["SMS_DEBUG"] = "1" if "--debug" in args else os.environ.get("SMS_DEBUG", "")

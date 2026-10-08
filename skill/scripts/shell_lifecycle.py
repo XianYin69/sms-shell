@@ -19,6 +19,8 @@ import resolve_home, chains, chain_timing, atomic_io, close_guard as cg
 S = os.path.dirname(os.path.abspath(__file__))
 BIN = os.path.join(os.path.dirname(os.path.dirname(S)), "bin", "sms-shell.py")
 PATTERNS = ("shell_tui_textual.py", "shell_tui.py", "shell_console.py", "shell_gui.py", "sms-shell.py")
+SMS_MARK = ("skill_manage_system", "SMS-core", "SMS-shell")  # 批34 移动 Developin：命令行特征串三认
+def _sms_hit(cl): return any(m in (cl or "") for m in SMS_MARK)
 CONF = {"m": "", "at": 0.0}
 # A1 重启必须出现可用新窗口：CREATE_NEW_CONSOLE(0x10)；绝不含 CREATE_NO_WINDOW(0x08000000)
 NEW_CONSOLE = 0x00000010
@@ -214,7 +216,7 @@ def _sms_pids(exclude=(), force=False, sms=None, cim=True, global_ok=None):
         add(pid)
     if cim and _gscan(sms, global_ok):
         for p, cl in _cim_rows(force=force):
-            if int(p) not in keep and "skill_manage_system" in cl:
+            if int(p) not in keep and _sms_hit(cl):
                 add(int(p))
     for _name, rel in SVC:
         try:
@@ -289,7 +291,7 @@ def kill_services(exclude=(), sms=None, budget=1.5, why=None, global_ok=None):
     if time.time() - t0 < budget and _gscan(sms, global_ok):  # ③ 兜底只在预算内跑·走 TTL 缓存·镜像根不扫全机
         for pid, cl in _cim_rows():
             if pid in keep or pid in pids: continue
-            if "skill_manage_system" in cl or any(pt in cl for pt in PATTERNS):
+            if _sms_hit(cl) or any(pt in cl for pt in PATTERNS):
                 if _alive(pid): pids.append(pid)
     for pid in pids:
         if time.time() - t0 > budget: break
