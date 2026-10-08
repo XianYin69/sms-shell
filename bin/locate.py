@@ -57,11 +57,20 @@ def _shell():
 CORE = find_core()
 if CORE and CORE != _base_of(os.path.normpath(os.path.join(HERE, ".."))):
     sys.path.insert(0, os.path.join(CORE, "scripts"))
+    _cd = os.path.join(CORE, "scripts")
+    _pp = os.environ.get("PYTHONPATH") or ""
+    if _cd not in _pp.split(os.pathsep):
+        os.environ["PYTHONPATH"] = _cd + (os.pathsep + _pp if _pp else "")  # runpy 起的壳经 env 找回核仓
 if __name__ == "__main__":
     if sys.argv[1:2] == ["api"]:
         sys.argv = ["api.py"] + sys.argv[2:]
-        p = os.path.join(_scripts(), "api.py")
-        if os.path.isfile(p): runpy.run_path(p, run_name="__main__")
-        else: runpy.run_path(os.path.join(HERE, "api.py"), run_name="__main__")
+        # 批34 双仓：api.py 在核仓（壳 standalone 时 _scripts() 只有壳层），候选依次找
+        cands = [os.path.join(_scripts(), "api.py")]
+        if CORE: cands.insert(0, os.path.join(CORE, "scripts", "api.py"))
+        cands.append(os.path.join(HERE, "api.py"))
+        p = next((c for c in cands if os.path.isfile(c)), None)
+        if p is None:
+            print("缺失 api.py（查过：%s）" % "; ".join(cands), file=sys.stderr); sys.exit(1)
+        runpy.run_path(p, run_name="__main__")
     else:
         sys.exit(runpy.run_path(_shell(), run_name="__main__") or 0)

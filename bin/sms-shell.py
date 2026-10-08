@@ -20,7 +20,12 @@ try:
     sys.path.insert(0, os.path.join(BASE, "scripts")) if BASE else None
     _core = locate.find_core() if "locate" in dir() else None
     if _core and os.path.join(_core, "scripts") != os.path.join(BASE or "", "scripts"):
-        sys.path.insert(0, os.path.join(_core, "scripts"))
+        _cd = os.path.join(_core, "scripts")
+        sys.path.insert(0, _cd)
+        # execv/subprocess 交棒＝新解释器，进程内 sys.path 会丢：核模块经 PYTHONPATH 传给子进程
+        _pp = os.environ.get("PYTHONPATH") or ""
+        if _cd not in _pp.split(os.pathsep):
+            os.environ["PYTHONPATH"] = _cd + (os.pathsep + _pp if _pp else "")
     import session_reg as _sr; os.environ["SMS_SESSION"] = _sr.ensure("client", os.getpid(), "壳" + str(os.getpid()))
 except Exception: pass
 args = sys.argv[1:]; os.environ["SMS_DEBUG"] = "1" if "--debug" in args else os.environ.get("SMS_DEBUG", "")
