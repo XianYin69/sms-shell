@@ -12,7 +12,7 @@ function Run-Engine($script, $argv) {
   & python -B (Join-Path $d $script) @argv 2>&1 | ForEach-Object { Write-Out ([string]$_) }
 }
 function Show-Cfg($sub, $argv) {
-  $argv = @($argv); $c = Cfg 'llm_gateway'; $key = [string]$c.api_key; if ($c.api_key_env) { $e = (Get-Item ('env:' + $c.api_key_env) -ErrorAction SilentlyContinue); if ($e) { $key = $e.Value } }
+  $argv = @($argv); $c = Cfg 'llm_gateway'; $key = [string]$c.api_key; if ($c.api_key_env) { $e = (Get-Item ('env:' + $c.api_key_env) -ErrorAction SilentlyContinue); if ($e -and [string]$e.Value) { $key = [string]$e.Value } }  # 空 env 不覆盖配置密钥（批34 防 401）
   if (-not $sub -or $sub -eq 'status') { Write-Line ('gateway: enabled=' + $c.enabled + ' base_url=' + $c.base_url + ' model=' + $c.model + ' api_key=' + $(if ($key) { 'set' } else { 'missing' }) + ' max_tokens=' + $c.max_tokens + ' · 文件=' + (Join-Path $SMS 'config\config.json')) ; return }
   if ($sub -eq 'show') { Write-Out (MaskJson (Read-CfgDoc)); return }
   if ($sub -eq 'get' -and $argv.Count -ge 1) { Write-Out ((CfgGet $argv[0] $null | ConvertTo-Json -Depth 10 -Compress)); return }

@@ -1,7 +1,7 @@
 ﻿# sms_gw_http.ps1 — 原生网关 HTTP 层（零 python）：OpenAI 兼容 /chat/completions SSE 逐字流式解析（content/reasoning/usage/[DONE]/非 data 行兜底）；批4 治「输出残缺」：data: 前缀兼容无空格写法（Substring(5)+Trim）；依赖 sms_state.ps1 的 Cfg/CfgGet，由 sms_shell.ps1 统一点源加载
 function Stream-Gateway($body, $sink) {
   $c = Cfg 'llm_gateway'
-  $key = [string]$c.api_key; if ($c.api_key_env -and (Get-Item ('env:' + $c.api_key_env) -ErrorAction SilentlyContinue)) { $key = (Get-Item ('env:' + $c.api_key_env)).Value }
+  $key = [string]$c.api_key; if ($c.api_key_env) { $ev = [string](Get-Item ('env:' + $c.api_key_env) -ErrorAction SilentlyContinue).Value; if ($ev) { $key = $ev } }  # 空 env 不覆盖配置密钥（批34 防 401）
   $req = [Net.HttpWebRequest]::Create(([string]$c.base_url).TrimEnd('/') + '/chat/completions')
   $tm = 120; try { $tm = [int](CfgGet 'llm_gateway.timeout' 120) } catch {}; if ($tm -le 0) { $tm = 120 }
   $req.Method = 'POST'; $req.ContentType = 'application/json'; $req.Timeout = 1000 * $tm; $req.ReadWriteTimeout = 1000 * $tm
