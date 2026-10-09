@@ -1,4 +1,4 @@
-﻿# sms_route.ps1 — 确定性路由引擎：剥离 sms-shell/sms 调用前缀重路由 · 裸内置词零模型直达（批22 收窄＝仅整行显式命令·自然语言含 skill/设置等一律走数据流交模型判意图）· :元指令（治理类原生零依赖；托管引擎按外部程序调用）· 个性化指令展开 · 其余话语→数据流
+﻿# sms_route.ps1 — 确定性路由引擎：剥离 sms-shell(-tui|-gui)/sms 调用前缀重路由 · 裸内置词零模型直达（批22 收窄＝仅整行显式命令·自然语言含 skill/设置等一律走数据流交模型判意图）· :元指令（治理类原生零依赖；托管引擎按外部程序调用）· 个性化指令展开 · 其余话语→数据流
 $ENGINE = @{ cmds = 'commands.py'; intent = 'commands.py'; alias = 'user_commands.py'; unalias = 'user_commands.py'; grant = 'permissions.py'; perms = 'permissions.py'; tools = 'agent_dispatch.py'; dream = 'dream.py'; api = 'api.py'; deploy = 'deploy.py'; session = 'chains.py'; hud = 'hud.py'; web = 'web_shell.py'; ext = 'external.py'; net = 'ff_lite.py'; tts = 'tts.py'; learn = 'learn.py'; file = 'sub_skills\file_ops\scripts\file_ops.py'; path = 'sub_skills\file_ops\scripts\path_ops.py'; index = 'register.py'; skills = 'skill_route.py'; workspace = 'workspace.py'; sh = 'sys_shells.py'; debug = 'debug.py'; mode = 'shell_mode.py'; smsocket = 'smsocket_boot.py' }
 function SkillScripts {
   $c = @((Join-Path $PSScriptRoot '..\skill\scripts'), (Join-Path $PSScriptRoot '..\scripts'))
@@ -19,7 +19,7 @@ function Show-Cfg($sub, $argv) {
   if ($sub -eq 'set' -and $argv.Count -ge 2) { CfgSet $argv[0] (($argv[1..($argv.Count - 1)]) -join ' '); Write-Line ('已写入 ' + $argv[0] + '（api_key 显示恒掩码）'); return }
   Write-Line ':config status|show|get <dot.path>|set <path> <json>（配置存 <SMS_HOME>/config\config.json·api_key 恒掩码）'
 }
-function Show-Help { Show-Builtins; Show-MetaHelp; Write-Dim '系统原生用法：sms-shell <话语|:元指令> 单发执行即退' }
+function Show-Help { Show-Builtins; Show-MetaHelp; Write-Dim '系统原生用法：sms-shell-tui <话语|:元指令> 单发执行即退（图形入口＝sms-shell-gui）' }
 function Handle-Line($line, $sink) {
   $t = ([string]$line).Trim(); if (-not $t) { return }
   if ($t -match '^(?i)(quit|exit|:quit|:q|:exit)$') { return 'exit' }
@@ -32,7 +32,7 @@ function Handle-Line($line, $sink) {
     elseif ($m -eq 'use') { if (-not $a.Count) { Write-Line '用法 :use <name>' } else { StatePut 'current_agent' $a[0]; Write-Line ('切到 agent：' + $a[0] + $(if ($a[0] -ne 'gateway' -and (CfgGet 'llm_gateway.enabled' $false)) { '（已记住——网关开启期间话语仍恒走 gateway，:config set llm_gateway.enabled false 后生效）' } elseif (@(Detected) -notcontains $a[0]) { '（未检出——配 agent_cli {bin,args} 并确保在 PATH）' } else { '' })) } }
     elseif ($m -eq 'skill') { StatePut 'skill_prefix' $(if ($a.Count -and $a[0] -eq 'off') { 'off' } else { 'on' }); Write-Line ('smsystem-suit 前缀：' + (StateGet 'skill_prefix' 'on')) }
     elseif ($m -eq 'image') { $script:IMG = $(if ($a.Count -and (Test-Path (($a -join ' ')))) { ($a -join ' ') } else { $null }); Write-Line $(if ($script:IMG) { '已附图（下一句生效）：' + $script:IMG } else { '图片不存在：' + ($a -join ' ') }) }
-    elseif ($m -in @('dispatch', 'session', 'edit', 'view', 'mode')) { if ($m -eq 'dispatch') { if ($a.Count -ge 2) { Run-Engine 'agent_dispatch.py' (@('skill') + $a) } else { Write-Line '用法 :dispatch <技能id> <诉求>（技能对等对话真派发·批23 每派发自开独立 conv）' } } elseif ($m -eq 'session') { Run-Engine 'chains.py' (@('session') + $(if ($a.Count) { $a } else { , @('current') })) } else { Write-Line '内置编辑器/界面模式仅 Textual TUI 提供（python 入口 sms-shell·F7/F8）·原生壳话语恒＝对话·文件操作用 :sh' } }
+    elseif ($m -in @('dispatch', 'session', 'edit', 'view', 'mode')) { if ($m -eq 'dispatch') { if ($a.Count -ge 2) { Run-Engine 'agent_dispatch.py' (@('skill') + $a) } else { Write-Line '用法 :dispatch <技能id> <诉求>（技能对等对话真派发·批23 每派发自开独立 conv）' } } elseif ($m -eq 'session') { Run-Engine 'chains.py' (@('session') + $(if ($a.Count) { $a } else { , @('current') })) } else { Write-Line '内置编辑器/界面模式仅 Textual TUI 提供（python 入口 sms-shell-tui / sms-shell-gui·F7/F8）·原生壳话语恒＝对话·文件操作用 :sh' } }
     elseif ($ENGINE[$m]) { $x = $a; if ($m -eq 'cmds') { $x = $(if ($a.Count) { @('show') + $a } else { @('help') }) } elseif ($m -eq 'intent') { $x = @('intent') + $a } elseif ($m -eq 'alias') { $x = @('add') + $a + @('--write') } elseif ($m -eq 'unalias') { $x = @('rm') + $a + @('--write') } elseif ($m -eq 'grant') { $x = $a + @('--write') } elseif ($m -eq 'skills') { $x = @('list') } elseif ($m -eq 'index') { if (-not $a.Count) { Run-Engine 'skills_config.py' @('roots'); return }; $x = @('--add-root') + $a + @('--write') }; Run-Engine $ENGINE[$m] $x }
     else { Write-Warn ('未知元指令 :' + $m + '（:help）'); Beep }
     return

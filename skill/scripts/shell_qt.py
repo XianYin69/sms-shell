@@ -10,7 +10,7 @@ shell.parallel=false 或达 shell.max_parallel 排队续发；任务中输 stop/
 模型 ask_user 提问时下一条输入即答复该任务（ask_channel.poll_any）；:edit/:view 令牌在本窗内开编辑器；
 HUD 常显同步＝步序与任务进度写 <SMS_HOME>/hud/state.json（hud.py 状态文件口径，置顶浮层自动起）。
 零裸子进程：可见控制台点（`tui` 另起终端壳）带 `# sms-visible` 标记，其余一律 no_window。
-跑法：python -B shell_qt.py            · 自检：python -B shell_qt.py --selftest（offscreen 出图，不发模型请求）
+跑法：bin/sms-shell-gui（图形入口·批37 双入口）或 python -B shell_qt.py            · 自检：python -B shell_qt.py --selftest（offscreen 出图，不发模型请求）
 """
 import os, sys, time, html, re, json, io, contextlib, subprocess
 for _s in (sys.stdout, sys.stderr):

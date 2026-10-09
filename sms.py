@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sms.py — 根入口（Windows/macOS/Linux，纯标准库）：①开箱即用：解析/创建 SMS_HOME、播种用户配置、红线自检（失败即停）；②依赖嗅探与修补：python/PyQt6（--qt 图形壳）/PySide6（--gui）/textual/git/agent CLI 逐项报告（缺 dep 不自动安装，--install-deps 经同意才 pip 装；textual 仅报告）；注册表产物缺失或 --rebuild 时重建；③引导至 CLI：交棒 bin/sms-shell（Textual TUI 优先，ps1 原生 DOS TUI 回退）。用法：python sms.py [doctor|shell] [--rebuild] [--install-deps] [shell 参数…]。"""
+"""sms.py — 根入口（Windows/macOS/Linux，纯标准库）：①开箱即用：解析/创建 SMS_HOME、播种用户配置、红线自检（失败即停）；②依赖嗅探与修补：python/PyQt6（--qt 图形壳）/PySide6（--gui）/textual/git/agent CLI 逐项报告（缺 dep 不自动安装，--install-deps 经同意才 pip 装；textual 仅报告）；注册表产物缺失或 --rebuild 时重建；③引导至 CLI：交棒双入口 bin/sms-shell-tui（Textual TUI 优先，ps1 原生 DOS TUI 回退）/ bin/sms-shell-gui（PyQt6/PySide6 图形壳；--gui/--qt 亦走图形入口）。用法：python sms.py [doctor|shell] [--rebuild] [--install-deps] [shell 参数…]。"""
 import importlib.util, io, json, os, shutil, subprocess, sys, time
 ROOT = os.path.dirname(os.path.abspath(__file__))
 S = os.path.join(ROOT, "skill", "scripts")
@@ -79,10 +79,12 @@ def main():
     out = []; sniff(argv, out.append)
     for ln in out: print("[2/3]", ln)
     if "doctor" in argv: sys.exit(0)
-    print("[3/3 引导至 CLI] 启动 sms-shell（Textual TUI 优先·ps1 原生 DOS TUI 回退·缺 python 时 api 路由至 locate.py）…")
+    _gui = ("--gui" in argv) or ("--qt" in argv) or os.environ.get("SMS_FRONT", "").lower() == "gui"
+    _name = "sms-shell-gui" if _gui else "sms-shell-tui"
+    print("[3/3 引导至 CLI] 启动 %s（终端入口＝sms-shell-tui·图形入口＝sms-shell-gui·ps1 原生 DOS TUI 回退·缺 python 时 api 路由至 locate.py）…" % _name)
     args = [a for a in argv if a not in ("doctor", "--rebuild", "--install-deps")]
-    # sms-visible：交棒 sms-shell——壳本体需要可见控制台
-    e = os.path.join(ROOT, "bin", "sms-shell.cmd" if os.name == "nt" else "sms-shell")
+    # sms-visible：交棒 sms-shell——壳本体需要可见控制台（GUI 入口自身起窗口，同样走可见交棒）
+    e = os.path.join(ROOT, "bin", _name + (".cmd" if os.name == "nt" else ""))
     sys.exit(subprocess.call(subprocess.list2cmdline([e] + args), cwd=ROOT, shell=True) if os.name == "nt" else subprocess.call(["sh", e, *args], cwd=ROOT))
 if __name__ == "__main__":
     main()

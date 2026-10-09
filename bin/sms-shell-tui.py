@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sms-shell launcher: Textual TUI preferred (source skill located via adjacent→SMS_SKILL→sms_skill, NO hardcoded path); ps1 native DOS TUI next to this file as fallback; no PowerShell -> locate.py python engine; first arg api -> locate.py."""
+"""sms-shell-tui (TUI entry): Textual TUI preferred (source skill located via adjacent->SMS_SKILL->sms_skill, NO hardcoded path); ps1 native DOS TUI next to this file as fallback; no PowerShell -> locate.py python engine; first arg api -> locate.py; --gui/--qt -> sibling sms-shell-gui.py (GUI entry, batch37)."""
 import os, sys, shutil, subprocess, importlib.util
 for s in (sys.stdout, sys.stderr):
     try: s.reconfigure(encoding="utf-8", errors="replace")
@@ -7,9 +7,14 @@ for s in (sys.stdout, sys.stderr):
 os.environ["PYTHONUTF8"] = "1"; os.environ["PYTHONIOENCODING"] = "utf-8"
 D = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, D)
+os.environ["SMS_FRONT"] = "tui"  # 批37：入口身份（lifecycle 重启保持前端）
 if sys.argv[1:2] == ["api"]:
     # sms-visible：启动器交棒控制台壳（定位技能前不可 import no_window）
     sys.exit(subprocess.call([sys.executable, "-B", os.path.join(D, "locate.py")] + sys.argv[1:]))
+# 批37 向后兼容：旧 sms-shell --qt/--gui 用法＝转交同目录 GUI 入口（GUI 入口自带 Qt 缺失回退）
+_gui = os.path.join(D, "sms-shell-gui.py")
+if [a for a in sys.argv[1:] if a in ("--gui", "--qt")] and os.path.isfile(_gui):
+    os.execv(sys.executable, [sys.executable, "-B", _gui] + sys.argv[1:])
 BASE = None
 try:
     import locate

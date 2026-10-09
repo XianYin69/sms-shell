@@ -1,5 +1,5 @@
 ﻿param([switch]$Offline, [switch]$SkipEngine); $ErrorActionPreference = 'Continue'
-$root = Split-Path (Split-Path $PSScriptRoot); $bin = Join-Path $root 'bin\sms-shell.cmd'
+$root = Split-Path (Split-Path $PSScriptRoot); $bin = Join-Path $root 'bin\sms-shell-tui.cmd'
 $rep = Join-Path $root 'tmp\shell_tests_report.txt'; $fail = 0; $lines = @()
 function RunOne([string[]]$argvs) { (& $bin @argvs 2>&1 | Out-String) }
 function T([string]$desc, [string[]]$argvs, [string[]]$expects) { $out = RunOne $argvs; $miss = @($expects | Where-Object { $out.IndexOf($_, [System.StringComparison]::Ordinal) -lt 0 }); if ($miss.Count -eq 0) { $script:lines += ('PASS ' + $desc) } else { $script:fail++; $e = ($out -replace '\s+', ' '); if ($e.Length -gt 260) { $e = $e.Substring(0, 260) }; $script:lines += ('FAIL ' + $desc + ' 缺[' + ($miss -join ';') + '] 实际: ' + $e) } }
@@ -9,6 +9,7 @@ T '裸 ?＝内置' @('?') @('元指令')
 T ':help 单发' @(':help') @(':config', ':quit', ':dispatch', ':sh', ':mode')
 T '前缀剥离＋meta' @('sms_shell :config get llm_gateway.model') @('auto')
 T 'sms-shell 单词＝帮助' @('sms-shell') @('元指令')
+T 'sms-shell-tui 单词＝帮助（批37 双入口前缀剥离）' @('sms-shell-tui') @('元指令')
 T '裸 config＝网关摘要' @('config') @('base_url', 'api_key=')
 T '裸 状态＝网关摘要' @('状态') @('enabled=')
 T '裸 打开设置＝网关摘要（批22 仅整行显式词直达）' @('打开设置') @('base_url', 'api_key=')

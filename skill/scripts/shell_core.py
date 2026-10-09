@@ -145,7 +145,7 @@ def handle(line, on_line, st=lambda n: None, ev=None):
     if t.lower() in ("quit", "exit", ":quit", ":q", ":exit"):
         _lc_pending(on_line)  # 批32 R1：退出路径也消费登记请求（壳内 restart 拉起新实例后硬退，走不到下一行）
         return "exit"
-    if (pm := re.match(r"(?i)^(sms[\s\-_\.]*shell(\.cmd)?|sms)(?=[\s,，:：]|$)[\s,，]*(.*)$", t)): return handle(pm.group(3), on_line, st, ev) if pm.group(3).strip() else on_line(HELP)
+    if (pm := re.match(r"(?i)^(sms[\s\-_\.]*shell(?:[\-_\.](?:tui|gui))?(\.cmd)?|sms)(?=[\s,，:：]|$)[\s,，]*(.*)$", t)): return handle(pm.group(3), on_line, st, ev) if pm.group(3).strip() else on_line(HELP)
     if t.startswith(("!", "！")): st("系统 shell 透传"); on_line(sys_shells.run(t[1:].strip(), on_line=on_line)); return None
     if t.startswith((":", "：")): p = t.lstrip(":：").split(); k = p[0].lower(); debug.enabled() and debug.log("meta " + " ".join(p)[:200]); st("元指令：" + k); return (on_line("停止状态：" + stop.status() + "（任务进行中在 TUI/GUI 直接输 stop/停止；readline 兜底壳 Ctrl+C 中断）"), stop.clear(), None)[2] if k == "stop" else _meta(k, p[1:], on_line, st)
     if (w := t.lower()) in HELPW: st("内置词：帮助"); on_line(HELP); return None

@@ -5,7 +5,7 @@ CREATE_NO_WINDOW|SW_HIDE＝重启后子进程 GetConsoleWindow()==0 隐形，用
 ② kill_others 去 PowerShell 依赖——主路径＝shells.json 壳登记表 + proc_guard 后代，CIM 仅作
 带 TTL 缓存的兜底，命令行取不到一律不杀（严禁误杀非 SMS python）；③ 回收面从「只杀壳」扩到
 「壳 ∪ 命令行含 smsystem-suit 的 core 后台（web_shell/planned/hud/qq_listen/dream_bg/tts）」。
-restart＝通报→写旗标→落链→分离式拉起 bin/sms-shell.py（新窗）→reclaim 清旧壳与 core 后台
+restart＝通报→写旗标→落链→分离式拉起 bin/sms-shell-gui.py（图形入口·新窗；缺则 sms-shell-tui.py）→reclaim 清旧壳与 core 后台
 （含本进程，os._exit 硬退，杜绝新旧并存）；
 shutdown＝通报＋reclaim（收 HUD/TTS＋清所有壳与 core 后台）＋落链；
 request(action,why)＝大模型侧入口（exec 跑 `python -B shell_lifecycle.py request restart 原因`）：只写 <SMS_HOME>/shell/lifecycle.json，由壳在本轮数据流收口时经 run_pending() 自己执行——当前对话先把话说完、任务表先落盘，再重启；
@@ -17,9 +17,23 @@ import os, sys, json, time, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import resolve_home, chains, chain_timing, atomic_io, close_guard as cg
 S = os.path.dirname(os.path.abspath(__file__))
-# 批34：启动器可经 env SMS_LAUNCHER 覆盖（部署态 bin 与脚本不同根时用之），默认＝同仓 bin/sms-shell.py
-BIN = os.environ.get("SMS_LAUNCHER") or os.path.join(os.path.dirname(os.path.dirname(S)), "bin", "sms-shell.py")
-PATTERNS = ("shell_tui_textual.py", "shell_tui.py", "shell_console.py", "shell_gui.py", "shell_qt.py", "sms-shell.py")
+# 批34：启动器可经 env SMS_LAUNCHER 覆盖（部署态 bin 与脚本不同根时用之）
+# 批37 双入口：默认按当前进程是哪个入口起（SMS_LAUNCHER_NAME）选重启后拉起的入口，缺省＝图形入口 sms-shell-gui.py，
+#   该入口不存在时回退终端入口 sms-shell-tui.py（旧名 sms-shell.py 一并兼容＝仍在 PATTERNS 里识别老进程）
+_B = os.path.join(os.path.dirname(os.path.dirname(S)), "bin")
+_GUIISH = ("sms-shell-gui.py", "sms-shell-tui.py", "sms-shell.py")
+_TUIISH = ("sms-shell-tui.py", "sms-shell-gui.py", "sms-shell.py")
+def _default_launcher():
+    """批37：重启保持用户当前前端——GUI 进程（bin/sms-shell-gui 置 SMS_GUI_ENTRY/SMS_FRONT）→拉图形入口，
+    否则拉终端入口（_spawn 用 CREATE_NEW_CONSOLE＝要一个可输入控制台，TUI 用户绝不落到隐形 GUI）；
+    两者皆缺再认旧名 bin/sms-shell.py；都没有则回 GUI 路径让 _spawn 报「启动器缺失」而非静默。"""
+    gui = bool(os.environ.get("SMS_GUI_ENTRY")) or (os.environ.get("SMS_FRONT") or "").lower() == "gui"
+    for n in (_GUIISH if gui else _TUIISH):
+        if os.path.isfile(os.path.join(_B, n)): return os.path.join(_B, n)
+    return os.path.join(_B, _GUIISH[0] if gui else _TUIISH[0])
+BIN = os.environ.get("SMS_LAUNCHER") or _default_launcher()
+PATTERNS = ("shell_tui_textual.py", "shell_tui.py", "shell_console.py", "shell_gui.py", "shell_qt.py",
+            "sms-shell-gui.py", "sms-shell-tui.py", "sms-shell.py")
 SMS_MARK = ("smsystem-suit", "skill_manage_system", "SMS-core", "SMS-shell")  # 批34 移动 Developin：命令行特征串三认
 def _sms_hit(cl): return any(m in (cl or "") for m in SMS_MARK)
 CONF = {"m": "", "at": 0.0}
@@ -316,7 +330,7 @@ def _spawn(sms):
     no_window.flags() 会强制 f |= CREATE_NO_WINDOW 并塞 startupinfo(SW_HIDE)，实测子进程
     GetConsoleWindow()==0＝隐形进程，用户看不到「重启后的新窗口」。重启的语义就是要一个
     可用新控制台，故 nt 上直接用 CREATE_NEW_CONSOLE(0x10) 调 subprocess.Popen。"""
-    if not os.path.isfile(BIN): return ("启动器缺失：" + BIN + "（可用 env SMS_LAUNCHER 指向真实 bin/sms-shell.py）", None)
+    if not os.path.isfile(BIN): return ("启动器缺失：" + BIN + "（可用 env SMS_LAUNCHER 指向真实 bin/sms-shell-gui.py / sms-shell-tui.py）", None)
     # A1b：nt 上不重定向任何标准流——传 stdin=DEVNULL 会让新控制台立刻读到 EOF
     # （键盘输入失效＝重启后那个窗口打字没反应）；不传则 CreateProcess 把子进程
     # 三个句柄绑到新控制台本身，才是「可用新窗口」。posix 无控制台概念，保持 DEVNULL。
@@ -329,7 +343,7 @@ def _spawn(sms):
         import chain_error; chain_error.record("shell", "shell_lifecycle._spawn", str(e))
         return ("拉起失败：" + str(e)[:120], None)
     try:  # A2：新壳一拉起就登记，后续 reclaim 不再依赖 PowerShell 找它
-        register_shell(sms, pr.pid, cl="sms-shell.py（新实例·_spawn 登记）")
+        register_shell(sms, pr.pid, cl=os.path.basename(BIN) + "（新实例·_spawn 登记）")
     except Exception: pass
     return ("已拉起新实例 pid=%s（%s）" % (pr.pid, BIN), pr.pid)
 def reclaim(exclude=(), why="", sms=None, global_ok=None):
@@ -517,7 +531,7 @@ def _selftest():
     smsystem-suit/PATTERNS 的假 pid 必须被 _sms_pids 排除（防误杀）⑦ register/unregister 幂等
     ＋死 pid 自动剔除。回收只在 tmp 镜像根里跑＝真服务进程不受扰；真实 pid 文件先备份后还原。"""
     import shutil, tempfile
-    SHELL_CL = "python.exe -B sms-shell.py（selftest 壳行）"
+    SHELL_CL = "python.exe -B sms-shell-gui.py（selftest 壳行·GUI 入口）"
     JUNK_CL = "python.exe close_guard.py arm"
     assert _sms_hit("python -B x.py # skill_manage_system") and _sms_hit("python -B x.py # smsystem-suit"), "兼容红线：旧名/新名命令行都必须命中回收面"
     t = time.time(); assert not _is_shell(), "直跑本文件应判非壳（argv 不含 PATTERNS）"

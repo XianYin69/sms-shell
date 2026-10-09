@@ -99,6 +99,31 @@ for rel in rels:
     if write and not same:
         os.makedirs(os.path.dirname(d), exist_ok=True)
         shutil.copy2(s, d)
-print(json.dumps({"src": src, "dst": dst, "write": write, "files": len(rels),
+# 批37 双入口更名：目标里已不存在的壳层件（如旧 bin/sms-shell{,.cmd,.py}）随覆盖安装清除，
+# 否则更名后混合体仍留旧入口（core 侧 bin 不被 git 跟踪，手动 cp 旹留）。
+_srcset = set(p.replace("/", os.sep) for p in rels)
+stale = []
+for dp, dn, fn in os.walk(dst):
+    dn[:] = [d for d in dn if d not in {".git", "__pycache__", ".pytest_cache", "tmp", ".kilo", "node_modules"}]
+    rel_d = os.path.relpath(dp, dst).replace("\\", "/")
+    for x in fn:
+        r2 = os.path.relpath(os.path.join(dp, x), dst)
+        rl = r2.replace(os.sep, "/")
+        if r2.replace("/", os.sep) in _srcset:
+            continue
+        top = rl.split("/")[0] if rel_d == "." else rel_d.split("/")[0]
+        if (top == "bin" or top in ("sms.py", "sms", "sms.cmd")
+                or re.match(r"^(skill/scripts/)?shell[^/]*\\.(py|ps1)$", rl)
+                or rl == "skill/scripts/web_page.html"):
+            stale.append(r2)
+for rel in stale:
+    if write:
+        try:
+            os.remove(os.path.join(dst, rel)); acts.append([rel, "prune"])
+        except Exception as e:
+            acts.append([rel, "prune-fail " + str(e)[:60]])
+    else:
+        acts.append([rel, "would prune"])
+print(json.dumps({"src": src, "dst": dst, "write": write, "files": len(rels), "pruned": len(stale),
                   "changed": sum(1 for a in acts if a[1] != "unchanged"),
                   "detail": acts}, ensure_ascii=False, indent=1))
