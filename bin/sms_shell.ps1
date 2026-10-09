@@ -15,7 +15,7 @@ function Read-Line {
 }
 $pos = @($Rest | Where-Object { $_ -and $_ -notlike '--*' })
 $flags = @($Rest | Where-Object { $_ -and $_ -like '--*' })
-if ($flags -contains '--gui' -or $flags -contains '--tui') { Run-Engine 'shell.py' $pos; ChainsGit; exit $LASTEXITCODE }
+if ($flags -contains '--gui' -or $flags -contains '--qt' -or $flags -contains '--tui') { Run-Engine 'shell.py' $pos; ChainsGit; exit $LASTEXITCODE }
 if ($pos.Count -gt 0) {
   if ($pos[0].ToLower() -eq 'api') { Run-Engine 'api.py' @($pos | Select-Object -Skip 1); exit $LASTEXITCODE }
   Handle-Line ($pos -join ' ') $sink | Out-Null; ChainsGit; exit 0

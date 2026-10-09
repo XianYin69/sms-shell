@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sms.py — 根入口（Windows/macOS/Linux，纯标准库）：①开箱即用：解析/创建 SMS_HOME、播种用户配置、红线自检（失败即停）；②依赖嗅探与修补：python/PySide6/textual/git/agent CLI 逐项报告（缺 dep 不自动安装，--install-deps 经同意才 pip 装 PySide6；textual 仅报告）；注册表产物缺失或 --rebuild 时重建；③引导至 CLI：交棒 bin/sms-shell（Textual TUI 优先，ps1 原生 DOS TUI 回退）。用法：python sms.py [doctor|shell] [--rebuild] [--install-deps] [shell 参数…]。"""
+"""sms.py — 根入口（Windows/macOS/Linux，纯标准库）：①开箱即用：解析/创建 SMS_HOME、播种用户配置、红线自检（失败即停）；②依赖嗅探与修补：python/PyQt6（--qt 图形壳）/PySide6（--gui）/textual/git/agent CLI 逐项报告（缺 dep 不自动安装，--install-deps 经同意才 pip 装；textual 仅报告）；注册表产物缺失或 --rebuild 时重建；③引导至 CLI：交棒 bin/sms-shell（Textual TUI 优先，ps1 原生 DOS TUI 回退）。用法：python sms.py [doctor|shell] [--rebuild] [--install-deps] [shell 参数…]。"""
 import importlib.util, io, json, os, shutil, subprocess, sys, time
 ROOT = os.path.dirname(os.path.abspath(__file__))
 S = os.path.join(ROOT, "skill", "scripts")
@@ -40,7 +40,11 @@ def run(script, *a):
 def sniff(argv, say):
     say("python %d.%d%s" % (*sys.version_info[:2], "" if sys.version_info >= (3, 9) else " —— 过低（需≥3.9）"))
     have_py = True
-    say("GUI 依赖 PySide6：%s" % ("可用" if importlib.util.find_spec("PySide6") else "缺失→sms-shell 回退 TUI；同意安装请加 --install-deps"))
+    say("GUI 依赖 PyQt6（--qt 图形壳 shell_qt.py）：%s" % ("可用" if importlib.util.find_spec("PyQt6") else "缺失→--qt 回退 PySide6/TUI；同意安装请加 --install-deps"))
+    if "--install-deps" in argv and not importlib.util.find_spec("PyQt6"):
+        no_window.run([sys.executable, "-m", "pip", "install", "PyQt6"])
+        say("GUI 依赖 PyQt6：%s" % ("可用" if importlib.util.find_spec("PyQt6") else "安装失败"))
+    say("GUI 依赖 PySide6（--gui 旧极简窗）：%s" % ("可用" if importlib.util.find_spec("PySide6") else "缺失→sms-shell 回退 TUI；同意安装请加 --install-deps"))
     if "--install-deps" in argv and not importlib.util.find_spec("PySide6"):
         no_window.run([sys.executable, "-m", "pip", "install", "PySide6"])
         say("GUI 依赖 PySide6：%s" % ("可用" if importlib.util.find_spec("PySide6") else "安装失败"))

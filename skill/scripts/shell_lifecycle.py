@@ -19,7 +19,7 @@ import resolve_home, chains, chain_timing, atomic_io, close_guard as cg
 S = os.path.dirname(os.path.abspath(__file__))
 # 批34：启动器可经 env SMS_LAUNCHER 覆盖（部署态 bin 与脚本不同根时用之），默认＝同仓 bin/sms-shell.py
 BIN = os.environ.get("SMS_LAUNCHER") or os.path.join(os.path.dirname(os.path.dirname(S)), "bin", "sms-shell.py")
-PATTERNS = ("shell_tui_textual.py", "shell_tui.py", "shell_console.py", "shell_gui.py", "sms-shell.py")
+PATTERNS = ("shell_tui_textual.py", "shell_tui.py", "shell_console.py", "shell_gui.py", "shell_qt.py", "sms-shell.py")
 SMS_MARK = ("skill_manage_system", "SMS-core", "SMS-shell")  # 批34 移动 Developin：命令行特征串三认
 def _sms_hit(cl): return any(m in (cl or "") for m in SMS_MARK)
 CONF = {"m": "", "at": 0.0}
