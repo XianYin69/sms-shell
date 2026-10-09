@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""shell_qt.py — sms-shell 的 PyQt6 图形前端（真正的 shell GUI，不是技能注册表浏览器）：
-顶栏＝session·步序·任务表进度·剩余时间·忙闲呼吸灯；左＝流式正文（与 Textual 同口径 msg_flow.visible
-只上正文/• notice/✗ err，着色按 shell_tui_paint 语义）；右＝三页签（详细细节＝◌思考/$工具/⧉技能/!sh
-过程行·跨会话明细＝detail_bus 增量·任务表＝<SMS_HOME>/tasks 行级进度）；底部输入＝Enter 提交·
-Ctrl+Enter 换行·↑↓ 历史·Tab 元指令补全·F3 帮助；工具栏＝帮助/技能/清屏/停止全部/编辑器/HUD/重启壳。
-路由完全复用 shell_core.handle：`:` 元指令、`!` 系统 shell、裸内置词、话语→数据流一律同 TUI。
-批27 并行：每条输入各起一个 QThread（stop_channel.bind/ask_channel.bind/chains.ACTIVE 线程隔离），
-shell.parallel=false 或达 shell.max_parallel 排队续发；任务中输 stop/停止＝协作收口、stop <tid> 只停一个；
-模型 ask_user 提问时下一条输入即答复该任务（ask_channel.poll_any）；:edit/:view 令牌在本窗内开编辑器；
-HUD 常显同步＝步序与任务进度写 <SMS_HOME>/hud/state.json（hud.py 状态文件口径，置顶浮层自动起）。
-零裸子进程：可见控制台点（`tui` 另起终端壳）带 `# sms-visible` 标记，其余一律 no_window。
-跑法：bin/sms-shell-gui（图形入口·批37 双入口）或 python -B shell_qt.py            · 自检：python -B shell_qt.py --selftest（offscreen 出图，不发模型请求）
-"""
+"""shell_qt.py — sms-shell 图形壳（PyQt6）＝网页端传真机界面的本机镜像（批38 重写）：
+机身 chassis → ① 进纸器 DOC FEEDER（话语/:元指令·Tab 补全·↑↓ 历史·常用拨号）② 出纸口 PAPER TRAY（逐行传真·
+米纸卷＋撕纸线·复制/下载/撕纸清屏）③ 控制面板 CONTROL（LCD 六行＋六盏指示灯＋META 元指令键阵＋F1 六组）
+④ 拨号盘＋走纸控制（↻巡检/🔊朗读/⏸停止/▶继续）⑤ 抽屉面板（任务表/计划/链/会话/技能/文件/配置/权限/明细）。
+**GUI 端不做任何密钥验证**：网页端的门禁插令牌区（#gate）在图形壳不存在——本机窗口即可信，面板数据经
+shell_qt_fax.api() 进程内直调 web_shell 同一套 getter/poster，绝不开端口、绝不读/显影/复制/轮换 token，
+info 结果一律 scrub 掉 token/指纹。版式与键位每次现取 web_page.html（CSS :root 变量→QSS 渐变、
+JS META·METAD·PAD·QUICK·F1→机身件），页面取不到时用内置兜底，网页端改了图形壳跟着改、不留两份口径。
+路由完全复用 shell_core.handle：`:` 元指令、`!` 系统 shell、裸内置词、话语→数据流一律同 TUI/网页端；
+并行、停止、提问、明细、任务表、HUD、编辑器与旧壳同口径（Task worker·stop_channel/ask_channel/chains.ACTIVE
+线程隔离·shell.parallel=false 或达 shell.max_parallel 排队续发·stop <tid> 只停一个·ask_user 下一条输入即答复）。
+零裸子进程：唯一有意开窗处（`tui` 另起终端壳）带 `# sms-visible` 标记，其余一律 no_window。
+跑法：bin/sms-shell-gui（图形入口·批37 双入口）或 python -B shell_qt.py · 自检：python -B shell_qt.py --selftest
+（offscreen 成图＋机身件计数＋抽屉面板渲染，不发模型请求）；端到端回归：--probe=:help||:cmds（输出落 txt）。"""
 import os, sys, time, html, re, json, io, contextlib, subprocess
 for _s in (sys.stdout, sys.stderr):
     with contextlib.suppress(Exception): _s.reconfigure(encoding="utf-8", errors="replace")
@@ -36,7 +37,6 @@ def _scripts():
             for sub in ("skill/scripts", os.path.join("skills", "smsystem-suit", "skill", "scripts"),
                         os.path.join("skills", "skill_manage_system", "skill", "scripts")):
                 cand.append(os.path.join(base, sub))
-        # 壳层件在混合体里另有落点：<SMS_HOME>/skills/sms-shell/scripts 与 <sms_skill>/../sms-shell/scripts
         for c in (os.path.join(home, "skills", "sms-shell", "scripts"),
                   os.path.join(skill or "", "..", "sms-shell", "scripts") if skill else "",
                   os.path.join(skill or "", "..", "sms-shell", "skill", "scripts") if skill else ""):
@@ -50,28 +50,33 @@ S not in sys.path and sys.path.insert(0, S)
 import shell_core as core                      # 壳共享路由（元指令＋数据流）＝唯一真源
 import msg_flow, detail_bus, atomic_io, settings as st
 import stop_channel as stop
+try:
+    import shell_qt_fax as fax                  # 传真机镜像件（版式取网页端·数据直调 web_shell·无密钥面）
+except ImportError as e:                        # 缺件＝覆盖安装不完整，明确交棒终端入口而非半瞎窗口
+    sys.exit("图形壳缺镜像件 shell_qt_fax.py（%s）——跑 deploy.py 或 install_overlay.py --write 补全，"
+             "或用 bin/sms-shell-tui 终端入口" % e)
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QFont, QKeySequence
-from PyQt6.QtWidgets import (QApplication, QCompleter, QHBoxLayout, QLabel, QListWidget,
-                             QListWidgetItem, QMainWindow, QPlainTextEdit, QPushButton,
-                             QSplitter, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
+                             QPushButton, QTextBrowser, QVBoxLayout, QWidget)
 SMS = core.SMS; TD = os.path.join(SMS, "tasks")
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-M = dict(bg="#1e1e2e", panel="#181825", side="#11111b", fg="#cdd6f4", dim="#6c7086", blue="#89b4fa",
-         green="#a6e3a1", yellow="#f9e2af", red="#f38ba8", mauve="#cba6f7", teal="#89dceb",
-         peach="#fab387", line="#313244")
+PAPE = dict(bg="#f7f3e7", ink="#1b2026", dim="#6b6152", blue="#2b4a63", green="#1d6b41", yellow="#8a6a2a",
+            red="#c81e1e", mauve="#6b3fa0", teal="#0f6b7a", peach="#b45309", line="#c9c0ae", sys="#5a4a1c")
 def esc(t): return html.escape(str(t), quote=False)
 def paint(t):
-    """一行文本 → HTML（对齐 shell_tui_paint 语义：⧉技能徽章紫·$ 命令橙·✗ 红·✎ 黄• 绿·路径暗青·`code` 橙）"""
+    """一行文本 → 纸面 HTML（传真墨色口径：⧉技能紫·$ 命令棕橙·✗ 红·✎ 黄·• 绿·路径青·`code` 棕橙）"""
     t = str(t)
     if t.startswith("⧉") and "▸" in t:
         name, _, rest = t[1:].partition("▸")
-        body = _rich(rest.lstrip())
-        return '<span style="color:%s;font-weight:bold">⧉%s</span> <span style="color:%s">▸</span> %s' % (M["mauve"], esc(name), M["mauve"], body)
-    head = {"$ ": (M["peach"], "$ "), "✗ ": (M["red"], "✗ "), "✎ ": (M["yellow"], "✎ "), "• ": (M["green"], "• "), "! ": (M["peach"], "! ")}
+        return '<span style="color:%s;font-weight:bold">⧉%s</span> <span style="color:%s">▸</span> %s' % (
+            PAPE["mauve"], esc(name), PAPE["mauve"], _rich(rest.lstrip()))
+    head = {"$ ": (PAPE["peach"], "$ "), "✗ ": (PAPE["red"], "✗ "), "✎ ": (PAPE["yellow"], "✎ "),
+            "• ": (PAPE["green"], "• "), "! ": (PAPE["peach"], "! ")}
     for pre, (col, label) in head.items():
         if t.startswith(pre):
-            return '<span style="color:%s;font-weight:bold">%s</span>%s' % (col, esc(label), _rich(t[len(pre):], col if pre == "$ " else None))
+            return '<span style="color:%s;font-weight:bold">%s</span>%s' % (col, esc(label),
+                                                                            _rich(t[len(pre):], col if pre == "$ " else None))
     return _rich(t)
 PATH = re.compile(r"[A-Za-z]:[\\/][^\s，。！？；：,]+|[\w\-\./\\]+\.(?:py|md|ps1|cmd|json|txt|html|csv|sh|js|ts)\b")
 CODE = re.compile(r"`([^`\n]+)`")
@@ -81,16 +86,15 @@ def _rich(s, base=None):
     for m in ms:
         if m.start() < pos: continue
         out.append(esc(s[pos:m.start()]))
-        if m.group(0).startswith("`"): out.append('<span style="color:%s;font-weight:bold">%s</span>' % (M["peach"], esc(m.group(1))))
-        else: out.append('<span style="color:%s">%s</span>' % (M["teal"], esc(m.group(0))))
+        if m.group(0).startswith("`"): out.append('<span style="color:%s;font-weight:bold">%s</span>' % (PAPE["peach"], esc(m.group(1))))
+        else: out.append('<span style="color:%s">%s</span>' % (PAPE["teal"], esc(m.group(0))))
         pos = m.end()
     out.append(esc(s[pos:]))
-    return '<span style="color:%s">%s</span>' % (base or M["fg"], "".join(out))
+    return '<span style="color:%s">%s</span>' % (base or PAPE["ink"], "".join(out))
 def badge(h):
     """〔技能:x〕〔工具:x→y〕徽章着色；入参＝paint 已产出的安全 HTML（不再二次转义）"""
-    t = str(h)
-    t = re.sub(r"〔(技能|工具):([^〕]*)〕", lambda m: '<span style="color:%s;font-weight:bold">〔%s:%s〕</span>' % (M["mauve"], m.group(1), m.group(2)), t)
-    return t
+    return re.sub(r"〔(技能|工具):([^〕]*)〕", lambda m: '<span style="color:%s;font-weight:bold">〔%s:%s〕</span>' %
+                  (PAPE["mauve"], m.group(1), m.group(2)), str(h))
 
 class Task(QThread):
     """一条用户输入＝一个并行任务 worker（tid 绑 stop_channel/ask_channel/chains.ACTIVE 线程本地）。"""
@@ -118,6 +122,7 @@ class Task(QThread):
             except Exception: pass
             stop.clear(self.tid)
         self.over.emit(self.tid, done)
+
 
 class Editor(QMainWindow):
     """窗内文本编辑器（:edit/:view 令牌与 F8 用），保存＝atomic_io 之外的直写（工作区与用户文件均可）。"""
@@ -149,6 +154,7 @@ class Editor(QMainWindow):
         try: self.ed.setPlainText(open(self.path, encoding="utf-8", errors="replace").read()); self.stat.setText("已重载")
         except Exception as e: self.stat.setText("✗ 重载失败：" + str(e)[:160])
 
+
 class Input(QPlainTextEdit):
     """底部输入：Enter 提交 · Ctrl+Enter 换行 · ↑↓ 历史 · Tab 元指令补全。"""
     def __init__(self, win):
@@ -168,15 +174,18 @@ class Input(QPlainTextEdit):
             if self.win.history(self, k == Qt.Key.Key_Up): return
         super().keyPressEvent(ev)
 
+
+
 class Shell(QMainWindow):
+    """传真机机身容器：机身五区由 shell_qt_fax.build() 装配，路由/并行/停止/提问/明细一律沿用旧壳引擎件。"""
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("sms-shell · PyQt6 图形壳（默认 smsystem-suit 数据流）")
-        self.resize(1240, 780)
+        self.setWindowTitle("sms-shell · 传真机图形壳（免密钥·默认 smsystem-suit 数据流）")
+        self.resize(1420, 860)
         self.running, self.pend, self.hist, self.details = {}, [], [], []
         self.seq = self.bus_off = self.hi = 0
         self.awaiting = None; self.task_prog = ""; self.steps = []; self.editors = []
-        self._bus_off = None
+        self._bus_off = None; self._info = {}; self._panel = ""; self._last_out = ""
         try:
             import session_reg as sr; SELF = sr.bind("client", os.getpid(), "Qt壳")
             os.environ.setdefault("SMS_SESSION", SELF)
@@ -188,109 +197,180 @@ class Shell(QMainWindow):
             sb = core.startup_block(); sb and self.echo(sb)
         with contextlib.suppress(Exception):
             import ask_channel; ask_channel.arm()
-        self.refresh_tasks(); self.refresh_side()
+        self.fax("pollAll")
 
+    # ---------- 装配 ----------
     def _ui(self):
-        central = QWidget(); self.setCentralWidget(central); root = QVBoxLayout(central); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
-        self.top = QLabel(""); self.top.setObjectName("top"); root.addWidget(self.top)
-        tb = QWidget(); tb.setObjectName("toolbar"); h = QHBoxLayout(tb); h.setContentsMargins(8, 2, 8, 2); h.setSpacing(4)
-        for label, fn in ((":help", lambda: self.echo(core.HELP)), (":cmds", lambda: self._meta("cmds")), (":skills", lambda: self._meta("skills")),
-                          (":session", lambda: self._meta("session", "overview")), ("清屏", self.clear_log), ("停止全部", lambda: self.stop_all()),
-                          ("详细细节", self.focus_details), ("HUD", self.hud_toggle)):
-            b = QPushButton(label); b.setObjectName("tb"); b.clicked.connect(fn); h.addWidget(b)
-        h.addStretch(1); self.chips = QLabel(""); h.addWidget(self.chips); root.addWidget(tb)
-        sp = QSplitter(Qt.Orientation.Horizontal); root.addWidget(sp, 1)
-        left = QWidget(); lv = QVBoxLayout(left); lv.setContentsMargins(0, 0, 0, 0); lv.setSpacing(0)
-        self.out = QTextBrowser(); self.out.setObjectName("log"); self.out.setOpenExternalLinks(True); lv.addWidget(self.out, 1)
-        self.ent = Input(self); lv.addWidget(self.ent); sp.addWidget(left)
-        self.tabs = QTabWidget(); self.tabs.setObjectName("side")
-        self.det = QTextBrowser(); self.bus = QTextBrowser(); self.tasks = QListWidget()
-        for name, w in (("详细细节", self.det), ("跨会话明细", self.bus), ("任务表", self.tasks)):
-            tab = QWidget(); vv = QVBoxLayout(tab); vv.setContentsMargins(0, 0, 0, 0)
-            bar = QHBoxLayout(); bar.setContentsMargins(4, 2, 4, 2)
-            tlabel = QLabel(name + " "); tlabel.setStyleSheet("color:%s" % M["blue"]); bar.addWidget(tlabel); bar.addStretch(1)
-            for bl, fn in (("清空", w.clear), ("复制", lambda x=w: QApplication.clipboard().setText(x.toPlainText() if isinstance(x, QTextBrowser) else "\n".join(str(self.tasks.item(i).data(0)) for i in range(self.tasks.count()))))):
-                b = QPushButton(bl); b.setObjectName("tb"); b.clicked.connect(fn); bar.addWidget(b)
-            vv.addLayout(bar); vv.addWidget(w); self.tabs.addTab(tab, name)
-        sp.addWidget(self.tabs); sp.setStretchFactor(0, 3); sp.setStretchFactor(1, 2)
-        self.stat = QLabel(""); self.stat.setObjectName("status"); root.addWidget(self.stat); root.addWidget(self._prog())
-        self.setStyleSheet("""QMainWindow{background:%(bg)s}#top{background:%(side)s;color:%(blue)s;padding:3px 8px;font-weight:bold}
-#toolbar{background:%(panel)s}QPushButton#tb{background:%(side)s;color:%(fg)s;border:1px solid %(dim)s;border-radius:4px;padding:2px 8px}
-QPushButton#tb:hover{color:%(yellow)s;border-color:%(yellow)s}QTextBrowser{background:%(bg)s;color:%(fg)s;border:0;padding:6px}
-QListWidget{background:%(side)s;color:%(fg)s;border:0;padding:4px}QTabBar::tab{background:%(side)s;color:%(dim)s;padding:3px 10px;border:1px solid %(dim)s}
-QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{background:%(panel)s;color:%(blue)s;border:0;border-top:1px solid %(dim)s;padding:4px}
-#status{background:%(side)s;color:%(dim)s;padding:2px 8px}#prog{background:%(side)s;color:%(yellow)s;padding:1px 8px}QSplitter::handle{background:%(line)s}""" % M)
-        self.stat.setText("● 就绪 · Enter 提交 · Ctrl+Q 退出 · F3 帮助 · F8 编辑器 · F12 停止当前任务")
+        self.ent = Input(self)
+        self.fw = fax.build(self, self.ent)              # 机身五区（版式真源＝网页端）
+        self.setStyleSheet(fax.qss())
+        self.out = self.fw["roll"]; self.drawer = self.fw["drawer"]
+        self.stat = QLabel(""); self.stat.setObjectName("statusbar")
+        c = self.centralWidget(); c.layout().addWidget(self.stat)
+        self.stat.setText("● 就绪 · Enter 送稿 · Tab 补全 · F3 速查 · F8 编辑器 · F12 停止 · 免密钥（本机窗口）")
 
-    def _prog(self):
-        self.prog = QLabel(""); self.prog.setObjectName("prog"); self.prog.hide(); return self.prog
     def _timers(self):
         self.t_ui = QTimer(self); self.t_ui.timeout.connect(self.tick); self.t_ui.start(150)
         self.t_ask = QTimer(self); self.t_ask.timeout.connect(self.ask_poll); self.t_ask.start(400)
         self.t_bus = QTimer(self); self.t_bus.timeout.connect(self.bus_poll); self.t_bus.start(1000)
-        self.t_task = QTimer(self); self.t_task.timeout.connect(self.refresh_tasks); self.t_task.start(2000)
+        self.t_task = QTimer(self); self.t_task.timeout.connect(lambda: self.fax("pollTasks")); self.t_task.start(4000)
+
     def _menu(self):
         m = self.menuBar().addMenu("壳(&S)")
-        for label, fn, sc in (("帮助 :help", lambda: self.echo(core.HELP), "F3"), ("命令表 :cmds", lambda: self._meta("cmds"), "Ctrl+H"),
-                              ("技能清单 :skills", lambda: self._meta("skills"), "Ctrl+K"), ("会话拓扑 :session overview", lambda: self._meta("session", "overview"), "Ctrl+J"),
-                              ("配置状态", lambda: self.echo(core._cfgline()), None), ("编辑器（:edit）", self.open_editor, "F8"),
-                              ("清屏", self.clear_log, "Ctrl+L"), ("停止全部任务", lambda: self.stop_all(), "F12"),
-                              ("另起 TUI 终端壳", lambda: self.submit("tui"), None), ("退出", self.close, "Ctrl+Q")):
-            a = QAction(label, self)
-            if sc: a.setShortcut(QKeySequence(sc))
-            a.triggered.connect(fn); m.addAction(a)
-        self.menuBar().hide()  # 快捷键仍生效，顶栏工具条替代菜单视觉
+        for label, fn, sc in (("速查 :help", lambda: self.echo(core.HELP), "F3"),
+                              ("命令表 :cmds", lambda: self._meta("cmds"), "Ctrl+H"),
+                              ("技能清单 :skills", lambda: self._open("skills"), "Ctrl+K"),
+                              ("会话拓扑 :session overview", lambda: self._meta("session", "overview"), "Ctrl+J"),
+                              ("任务表面板", lambda: self._open("tasks"), "Ctrl+T"),
+                              ("配置面板", lambda: self._open("config"), "Ctrl+P"),
+                              ("权限面板", lambda: self._open("perms"), None),
+                              ("编辑器（:edit）", self.open_editor, "F8"),
+                              ("巡检 ALL", lambda: self.fax("pollAll"), "F5"),
+                              ("重启壳（换前端 :restart）", lambda: self.submit(":restart"), None)):
+            a = QAction(label, self); a.triggered.connect(fn)
+            with contextlib.suppress(Exception): sc and a.setShortcut(QKeySequence(sc))
+            m.addAction(a)
+        g = self.menuBar().addMenu("传真机(&F)")
+        for label, fn in (("撕纸清屏", lambda: self.fax("tear")), ("复制输出", lambda: self.fax("copyAll")),
+                          ("下载 .txt", lambda: self.fax("dl")), ("详细细节（长输出）", lambda: self._open("detail")),
+                          ("跨会话明细", lambda: self._open("bus")), ("合上抽屉", lambda: self.fax("closeDrawer"))):
+            a = QAction(label, self); a.triggered.connect(fn); g.addAction(a)
+        v = self.menuBar().addMenu("帮助(&H)")
+        about = ("本壳＝sms-shell 网页端传真机界面的本机镜像：机身五区（进纸器/出纸口/控制面板/拨号盘+走纸/抽屉面板），"
+                 "版式与键位现取 web_page.html，数据经 web_shell 面板件进程内直调——GUI 端不做任何密钥验证："
+                 "不开端口、不读/不显影/不复制 token，LCD 只标『本机直连』。路由仍走 shell_core（同 TUI）。")
+        for label, fn in (("界面口径（网页端镜像·免密钥）", lambda: self.echo(about)),
+                          ("关于", lambda: self.echo(core.banner()))):
+            a2 = QAction(label, self); a2.triggered.connect(fn); v.addAction(a2)
+
+    # ---------- 机身动作（网页端同名动作的 Qt 对应体·函数名字面一致便于对照） ----------
+    def feed(self, text):
+        """填入送稿口（网页端 setCmd 同义）：焦点回进纸器、光标落末尾。"""
+        self.ent.setPlainText(text or ""); c = self.ent.textCursor()
+        c.movePosition(c.MoveOperation.End); self.ent.setTextCursor(c); self.ent.setFocus()
+
+    def feedNow(self):
+        self.submit(self.ent.toPlainText())
+
+    def fax(self, act, arg=None):
+        """机身/抽屉动作分派（异常一律卡纸打纸，不外抛·不静默）。"""
+        try:
+            fn = {"pollAll": self.pollAll, "pollTasks": self.pollTasks, "pollInfo": self.pollInfo,
+                  "pollSolo": self.pollSolo, "doStop": lambda a=None: self.stop_one(""),
+                  "doResume": self.doResume, "tear": self.tear, "copyAll": self.copyAll, "dl": self.dl,
+                  "speakLast": self.speakLast, "closeDrawer": self.closeDrawer,
+                  "hist(-1)": lambda a=None: self.history(True), "hist(1)": lambda a=None: self.history(False),
+                  "clear()": lambda a=None: self.feed("")}.get(act)
+            if fn is None: return self.paper("系统", "机身无此动作：%s" % act, "sys")
+            r = fn(arg) if arg is not None else fn()
+            if isinstance(r, dict) and r.get("err"): self.paper("系统", "卡纸：%s（%s）" % (act, r["err"]), "err")
+            return r
+        except Exception as e:
+            self.paper("系统", "机身动作 %s 异常：%s: %s" % (act, type(e).__name__, str(e)[:140]), "err")
+
+    def faxPick(self, cmd):
+        """F1 六组键：`#` 前缀＝机身动作、`:` 前缀＝填入送稿口、其余（path:…）＝原样填。"""
+        c = str(cmd or "").strip()
+        if c.startswith("#"):
+            d = fax.DRAWERS.get(c)
+            if d and not str(d[1]).startswith("@"): return self._open(d[1], d[0])
+            return {"@copy": self.copyAll, "@stop": lambda: self.stop_one(""),
+                    "@resume": self.doResume}.get(str(d[1] if d else ""), lambda: self.feed(c))()
+        if c.startswith(":"): return self.feed(c if c.endswith(" ") else c + " ")
+        if c.startswith("path:"): return self._open("skills", "按路径加入技能")
+        return self.feed(c + " ")
+
+    # ---------- 抽屉面板 ----------
+    def _open(self, name, title=None):
+        """开抽屉：数据＝网页端同路径 /api/<name>（进程内直调·scrub 去密钥面）。"""
+        d = fax.DRAWERS
+        title = title or next((v[0] for v in d.values() if v[1] == name), name)
+        self._panel = name
+        if name == "bus":
+            data = {"lines": list(self.details)[-80:]}
+        else:
+            path = "/api/" + ({"ws": "files", "mode": "hud", "sys": "commands"}.get(name, name))
+            data = fax.api(path, {"ws": self._ws_hint()} if name in ("files", "file") else None)
+        self.fw["dtitle"].setText("⑤ 抽屉面板 · " + title)
+        self.fw["dbody"].setHtml(fax.panel_html(name, data))
+        self.drawer.show()
+        if isinstance(data, dict) and data.get("err"):
+            self.paper("系统", "面板 %s 卡纸：%s" % (name, data["err"]), "err")
+
+    def _ws_hint(self):
+        with contextlib.suppress(Exception):
+            import workspace; return workspace.current()
+        return ""
+
+    def closeDrawer(self):
+        self.drawer.hide(); self._panel = ""
+
+    def refreshDrawer(self):
+        if getattr(self, "_panel", "") in ("tasks", "perms", "config", "bus"): self._open(self._panel)
+
+    # ---------- 出纸口（网页端 print()/jam() 同构·米纸逐行走） ----------
+    def paper(self, who, text, cls="", body_html=None):
+        """出纸一行（网页端 print 同义）：who＝徽标（我/系统/agent/错误/模型提问），cls＝纸面色类。"""
+        if not str(text).strip() and body_html is None: return
+        self.papers = getattr(self, "papers", 0) + 1
+        self._last_out = str(text)
+        self.out.append(fax.line_html(who, text, cls, body_html))
+        sb = self.out.verticalScrollBar(); sb.setValue(sb.maximum())
+
+    def copyAll(self):
+        QApplication.clipboard().setText(self.out.toPlainText())
+        self.paper("系统", "输出已复制（%d 字）" % len(self.out.toPlainText()), "sys")
+
+    def dl(self):
+        p = os.path.join(os.environ.get("SMS_TMP") or core.SMS,
+                         "sms-fax-%s.txt" % time.strftime("%Y%m%d-%H%M%S"))
+        try:
+            io.open(p, "w", encoding="utf-8").write(self.out.toPlainText())
+            self.paper("系统", "已下载 → %s" % p, "sys")
+        except Exception as e: self.paper("系统", "下载失败：%s" % str(e)[:120], "err")
+
+    def tear(self):
+        """撕纸清屏：纸卷清空回纸头（明细/任务表面板不受影响）。"""
+        self.out.clear(); self.paper("系统", "已撕纸·出纸口回纸头", "sys")
+
+    def speakLast(self):
+        t = (self._last_out or "").strip()
+        if not t: return self.paper("系统", "无可朗读内容", "sys")
+        try:
+            import tts; r = tts.speak(t[:600], False)
+            self.paper("系统", "已朗读末条（%s）" % str(r)[:60], "sys")
+        except Exception as e: self.paper("系统", "朗读不可用：%s" % str(e)[:100], "err")
+
+    def doResume(self):
+        r = fax.api("/api/resume", {})
+        self.paper("系统", r.get("err") and ("续跑受阻：" + r["err"]) or "已请求续跑未完成计划表（网页壳同口径）", "sys")
+        self.pollTasks(); return r
+
+
+    # ---------- 送稿（路由真源＝shell_core.handle·与 TUI/网页端逐字同口径） ----------
     def echo(self, s, kind=""):
+        """兼容旧口径的输出入口：可见正文→出纸口（着色），非可见行→明细（右栏/抽屉）。"""
         t = str(s)
         if not t.strip(): return
         if kind != "raw" and not msg_flow.visible(t):
             if not msg_flow.blank(t): self._push(t)
             return
         self._push_cache(t)
+        who = {"me": "我", "err": "错误", "info": "系统"}.get(kind, "系统")
+        cls = {"me": "me", "err": "err", "info": "sys"}.get(kind, "")
         body = "<br>".join(badge(paint(x)) or "&nbsp;" for x in t.split("\n"))
-        col = {"err": M["red"], "me": M["blue"]}.get(kind, M["fg"])
-        self.out.append('<html><body style="margin:0"><div style="color:%s;margin:0 0 4px 0;white-space:pre-wrap;word-break:break-word">%s</div></body></html>' % (col, body))
-        sb = self.out.verticalScrollBar(); sb.setValue(sb.maximum())
+        self.paper(who, "", cls, body_html=body)
+
     def _push_cache(self, t):
         ("$ " in t or ".py" in t or ".md" in t or "config:" in t) and self.steps.append(t[:160]) if len(self.steps) < 4000 else None
     def _push(self, t):
         d = self.details
-        if d and d[-1].startswith(("◌", "〔◌")) and t.startswith(("◌", "〔◌")) and len(d[-1]) < 3000: d[-1] = d[-1] + " " + t.lstrip("◌ ")
+        if d and d[-1].startswith(("◌", "〔◌")) and t.startswith(("◌", "〔◌")) and len(d[-1]) < 3000:
+            d[-1] = d[-1] + " " + t.lstrip("◌ ")
         else: d.append(t[:3000])
         self.details = d[-150:]
-    def clear_log(self): self.out.clear()
-    def focus_details(self): self.tabs.setCurrentIndex(0)
+        if getattr(self, "_panel", "") == "bus": self.refreshDrawer()
 
-    def probe_finish(self):
-        """--probe 端到端回归：把输出区纯文本落盘并退出（供 CLI/CI 无窗验证路由结果）。"""
-        try:
-            p = os.environ.get("SMS_QT_PROBE_DUMP") or "qt_probe.txt"
-            io.open(p, "w", encoding="utf-8").write(self.out.toPlainText())
-            sh = os.environ.get("SMS_QT_SHOT")
-            sh and self.grab().save(sh)
-            print("PROBE_DUMP " + p + " chars=" + str(len(self.out.toPlainText())) + " details=" + str(len(self.details)))
-        except Exception as e:
-            print("PROBE_FAIL " + repr(e)[:160])
-        QApplication.instance().quit()
-
-    def qtver(self):
-        try:
-            from PyQt6.QtCore import QT_VERSION_STR
-            return QT_VERSION_STR
-        except Exception:
-            return "?"
-
-    def hud_toggle(self):
-        """HUD 浮层开关：未显→写 session 行（hud_view 自动拉起置顶浮层）；已显→hide。"""
-        try:
-            import hud
-            if hud._load().get("session"):
-                self._hud("hide", "", 0); self.echo("HUD 已隐藏", kind="info")
-            else:
-                self._hud("session", "sms-shell GUI（PyQt6）· 就绪", 1800)
-                self.echo("HUD 已开启（置顶·点击穿透·只读）", kind="info")
-        except Exception as e:
-            self.echo("HUD 不可用：" + str(e)[:120], kind="info")
     def _par(self):
         try: return bool(st.get("shell.parallel", True))
         except Exception: return True
@@ -301,8 +381,9 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
         if not self._par(): return not self.running
         c = self._cap()
         return not c or len(self.running) < c
+
     def submit(self, text):
-        text = (text or "").strip(); self.ent.clear()
+        text = (text or "").strip(); self.ent.setPlainText("")
         if not text: return
         w = text.split(" ", 1); one = w[1].strip() if len(w) > 1 else ""
         if stop.is_stop_word(text) or (stop.is_stop_word(w[0]) and one in self.running):
@@ -313,20 +394,19 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
             ask_channel.reply(text, self.awaiting[0]); self.awaiting = None; return
         lo = text.lower()
         if lo in (":gui", ":qt", "gui"):
-            self.hist.append(text); self.hi = len(self.hist); self.ent.clear()
-            self.echo("当前＝PyQt6 图形壳（shell_qt.py）· Qt %s · 并行 %d/%s · 明细 %d 条\n"
-                      "可用本地指令：:gui 本壳状态 · :clear 清输出区 · :reload 重载任务表/明细 · tui 另起 Textual 终端壳；"
-                      "其余 `:` 元指令一律交 shell_core（同 TUI）。" % (
+            self.hist.append(text); self.hi = len(self.hist)
+            self.echo("当前＝传真机图形壳（shell_qt.py 镜像网页端 · 免密钥）· Qt %s · 并行 %d/%s · 明细 %d 条\n"
+                      "可用本地指令：:gui 本壳状态 · :clear 撕纸清屏 · :reload 巡检/重开抽屉 · tui 另起 Textual 终端壳；"
+                      "其余 `:` 元指令一律交 shell_core（同 TUI/网页端）。" % (
                           self.qtver(), len(self.running), (self._cap() or "无限"), len(self.details)), kind="info")
             return
-        lo = text.lower()
         if lo in (":clear", ":reload"):
-            self.hist.append(text); self.hi = len(self.hist); self.ent.clear()
-            if lo == ":clear": self.out.clear(); self.echo("（输出区已清·明细仍留在右栏）", kind="info")
-            else: self.refresh_tasks(force=True); self.echo("已重载任务表/明细视图", kind="info")
+            self.hist.append(text); self.hi = len(self.hist)
+            if lo == ":clear": self.tear()
+            else: self.fax("pollAll"); self.refreshDrawer()
             return
         if lo in ("tui", ":tui"):
-            self.hist.append(text); self.hi = len(self.hist); self.ent.clear()
+            self.hist.append(text); self.hi = len(self.hist)
             _dn = open(os.devnull, "r+b")
             # sms-visible：GUI 另起可见 Textual TUI 终端壳（有意开新控制台窗·与 shell_gui.py 同口径）
             subprocess.Popen([sys.executable, "-B", os.path.join(S, "shell_tui_textual.py")],
@@ -335,27 +415,31 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
         self.hist.append(text); self.hi = len(self.hist)
         if not self._room():
             self.pend.append(text)
-            self.echo("已排队 %d 条 · %s·有空位自动续发" % (len(self.pend), "并发已达上限 %d" % self._cap() if self._par() else "并行已关（:config set shell.parallel false）"), kind="info")
+            self.echo("已排队 %d 条 · %s·有空位自动续发" % (len(self.pend),
+                      "并发已达上限 %d" % self._cap() if self._par() else "并行已关（:config set shell.parallel false）"),
+                      kind="info")
             return
         self.start(text)
+
     def start(self, text):
         self.seq += 1; tid = "t%d" % self.seq
-        self.echo("sms> %s%s" % (text, ("   〔并行第 %d 个任务〕" % (len(self.running) + 1)) if self.running else ""), kind="me")
+        self.echo("sms> %s%s" % (text, ("   〔并行第 %d 个任务〕" % (len(self.running) + 1)) if self.running else ""),
+                  kind="me")
         self.running[tid] = {"text": text, "t0": time.time()}
-        self.prog.show(); self._hud("session", (text[:60] or "sms-shell GUI") , 1800)
+        self._hud("session", (text[:60] or "sms-shell GUI"), 1800)
         w = Task(text, tid)
         w.line.connect(lambda s, t=tid: self.on_line(t, s))
         w.step.connect(lambda s, t=tid: self.on_step(t, s))
         w.env.connect(lambda e, t=tid: self.on_env(t, e))
         w.over.connect(self.on_over)
         w.start(); self.running[tid]["w"] = w
+        self.tick()
+
     def on_line(self, tid, s):
         tag = ("[%s] " % tid) if len(self.running) > 1 else ""
         t = str(s)
-        if msg_flow.visible(t):
-            self.echo((tag or "") + t)
-        elif not msg_flow.blank(t):
-            self._push((tag + t)[:3000])
+        if msg_flow.visible(t): self.echo((tag or "") + t)
+        elif not msg_flow.blank(t): self._push((tag + t)[:3000])
     def on_step(self, tid, n):
         tag = ("[%s] " % tid) if len(self.running) > 1 else ""
         self._push(tag + "▸ " + str(n)); self.last_step = str(n)
@@ -366,8 +450,9 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
             k, m = e.get("kind"), e.get("meta") or {}
             if k == "task":
                 eta = int(m.get("eta_s") or 0)
-                self.task_prog = "≡ %s %s/%s%s" % (str(m.get("id", ""))[-6:], m.get("done", 0), m.get("total", 0), (" · " + msg_flow.fmt(eta)) if eta else "")
-                self.prog.setText("▍任务表 " + self.task_prog)
+                self.task_prog = "≡ %s %s/%s%s" % (str(m.get("id", ""))[-6:], m.get("done", 0),
+                                                   m.get("total", 0), (" · " + msg_flow.fmt(eta)) if eta else "")
+                self.fw["lcd_任务表"].setText(self.task_prog)
             elif k == "edit":
                 self._push("✎ " + str(e.get("text") or ""))
             elif k == "err":
@@ -378,48 +463,115 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
         el = time.time() - float(info.get("t0") or time.time())
         if self.awaiting and self.awaiting[0] == tid: self.awaiting = None
         if self.running:
-            self.echo("✔ 任务 %s 收口（%.1fs）·仍在并行跑 %d 个：%s" % (tid, el, len(self.running), "、".join(sorted(self.running))), kind="info")
+            self.echo("✔ 任务 %s 收口（%.1fs）·仍在并行跑 %d 个：%s" %
+                      (tid, el, len(self.running), "、".join(sorted(self.running))), kind="info")
         else:
-            self.prog.hide(); self.task_prog = ""
-            self.stat.setText("● 就绪 · 上一条用时 %.1fs · 明细 %d 条（F3 帮助 · F8 编辑器 · Ctrl+Q 退出）" % (el, len(self.details)))
+            self.stat.setText("● 就绪 · 上一条用时 %.1fs · 明细 %d 条（F3 速查 · F8 编辑器 · F5 巡检）" %
+                              (el, len(self.details)))
             self._hud("hide", "", 0)
         if isinstance(done, str) and done.startswith(("edit:", "view:")):
             self.open_editor(done.split(":", 1)[1], ro=done.startswith("view:")); done = None
         if done == "exit": self.close(); return
         if done == "config": self.echo(core._cfgline())
+        self.refreshDrawer(); self.pollTasks()
         while self.pend and self._room(): self.start(self.pend.pop(0))
+
     def stop_one(self, one=""):
         if self.awaiting:
             import ask_channel; ask_channel.reply("用户已请求停止任务（stop）", self.awaiting[0]); self.awaiting = None
         if one and one in self.running:
-            stop.request("GUI 输入 stop " + one, one); self.echo("⛔ 已请求停止任务 %s（其余 %d 个不受影响）" % (one, len(self.running) - 1), kind="info"); return
+            stop.request("GUI 输入 stop " + one, one)
+            self.echo("⛔ 已请求停止任务 %s（其余 %d 个不受影响）" % (one, len(self.running) - 1), kind="info"); return
         if one and one not in self.running:
             self.echo("无此在跑任务：%s（现行 %s）" % (one, "、".join(sorted(self.running)) or "无"), kind="info"); return
         if self.running:
             for tid in list(self.running): stop.request("GUI 输入 stop（全部）", tid)
             self.echo("⛔ 已请求停止全部 %d 个在跑任务——各任务在下一检查点收口" % len(self.running), kind="info"); return
-        stop.clear(); self.echo("空闲：无进行中任务·停止状态已清", kind="info")
+        r = fax.api("/api/stop", {"why": "传真机壳 STOP 键（无在跑任务·清停止旗标）"})
+        stop.clear(); self.echo("空闲：无进行中任务·停止状态已清（%s）" % str(r.get("status") or "")[:60], kind="info")
     def stop_all(self): self.stop_one("")
 
+
+    # ---------- 巡检（LCD/指示灯/纸卡/抽屉·数据＝web_shell 面板件进程内直调） ----------
     def tick(self):
         self._side_i = getattr(self, "_side_i", 0) + 1
-        if self._side_i % 7 == 0: self.refresh_side()
-        if self._side_i % 10 == 0: self.refresh_tasks()
-        steps = list(self.details)[-1:]
-        cur = self.task_prog or getattr(self, "last_step", "") or "sms-shell·PyQt6 图形壳 · 就绪"
+        if self._side_i % 40 == 0: self.pollInfo()
+        if self._side_i % 20 == 0: self.pollSolo()
         n = len(self.running)
         sp = SPIN[int(time.time() * 8) % 10] if n else "●"
-        sess = ""
+        sess = conv = "-"
         with contextlib.suppress(Exception): sess = core.chains.cur_sess()
-        el = ""
-        if n:
-            el = " · 已用 %.0fs" % (time.time() - min(float(v.get("t0") or time.time()) for v in self.running.values()))
-        self.top.setText("%s %s ｜ session=%s ｜ 在跑 %d%s ｜ 排队 %d ｜ 明细 %d" % (sp, cur, sess or "-", n, el, len(self.pend), len(self.details)))
-        if not n: self.stat.setText("● 就绪 · Enter 提交 · Ctrl+Q 退出 · F3 帮助 · F8 编辑器 · F12 停止全部 · 明细 %d 条" % len(self.details))
-        else:
-            ids = "、".join(sorted(self.running)); self.chips.setText("并行中 " + ids)
-            self.stat.setText("%s %d 个任务在跑（%s）· stop 停全部 / stop <tid> 停一个 · ask_user 提问时下一条输入即答复" % (SPIN[int(time.time() * 8) % 10], n, ids))
-        if not n: self.chips.setText("")
+        with contextlib.suppress(Exception): conv = (_envs().get("SMS_CONV") or "-")
+        el = " · 已用 %.0fs" % (time.time() - min(float(v.get("t0") or time.time())
+                                                  for v in self.running.values())) if n else ""
+        cur = self.task_prog or getattr(self, "last_step", "") or "进纸待机"
+        try:
+            self.fw["lcd_会话"].setText("%s · %s" % (str(sess)[-8:], str(conv)[-8:]))
+            self.fw["lcd_模式"].setText("对话 · 并行 %d · 排队 %d%s" % (n, len(self.pend), el))
+        except Exception: pass
+        if n: self.banner("送稿中 %.0fs%s" % (time.time() - min(float(v.get("t0") or 0)
+                                            for v in self.running.values()), el), "warn")
+        if self._side_i % 13 == 0: self._bus_ui()
+
+    def banner(self, text, tone=""):
+        b = self.fw["banner"]; b.setText(text)
+        b.setObjectName({"warn": "lcdWarn", "err": "lcdErr"}.get(tone, "banner"))
+        b.setStyleSheet("color:%s;font-size:11px" % {"warn": fax.css_vars().get("amber"),
+                                                    "err": fax.css_vars().get("red")}.get(tone) or "#3c4a58")
+
+    def led(self, name, state):
+        lab = self.fw.get("led_" + name)
+        if lab is None: return
+        col = {"on": fax.css_vars().get("grn"), "warn": fax.css_vars().get("amber"),
+               "err": fax.css_vars().get("red"), "off": "#55606c"}.get(state, "#55606c")
+        lab.setText(("● " if state == "on" else "◆ " if state == "warn" else
+                     "✸ " if state == "err" else "○ ") + name)
+        lab.setStyleSheet("color:%s;font-size:11px" % col)
+
+    def pollInfo(self):
+        i = fax.api("/api/info")
+        if i.get("err"): return self.led("线路", "err")
+        self._info = i
+        g = i.get("gateway") or {}
+        try:
+            self.fw["lcd_网关"].setText("%s · %s" % ("on" if g.get("enabled") else "off", g.get("model") or "-"))
+            self.fw["lcd_线路"].setText("本机直连 · 免密钥（GUI 不开端口）")
+            self.fw["lcd_状态"].setText(i.get("session") and "SOLO on" or "就绪")
+        except Exception: pass
+        self.led("线路", "on")
+        self.led("对外", "warn" if (i.get("external") or {}).get("enabled") else "off")
+        self.led("做梦", "on" if (i.get("dream") or {}).get("enabled") else "off")
+        self.led("朗读", "on" if (i.get("tts") or {}).get("enabled") else "off")
+
+    def pollSolo(self):
+        r = fax.api("/api/perms")
+        if r.get("err"): return
+        s = r.get("solo") or {}
+        self.led("线路", "warn" if s.get("enabled") else "on")
+        try: self.fw["lcd_状态"].setText("SOLO %s" % ("on·权限自审" if s.get("enabled") else "off·需确认"))
+        except Exception: pass
+
+    def pollTasks(self):
+        r = fax.api("/api/tasks")
+        if r.get("err"):
+            self.fw["lcd_任务表"].setText("巡检不可用"); self.led("计划", "err"); return
+        rows = r.get("rows") or []
+        dn = r.get("done", 0); tot = r.get("total", 0); un = r.get("unfinished", 0)
+        self.fw["lcd_任务表"].setText("%s/%s %s · %s" % (dn, tot, str(r.get("tid") or "-")[-6:],
+                                                        r.get("eta") or "-") if tot else "无未完成")
+        show = bool(tot and un > 0)
+        self.fw["btn_stop"].setVisible(show); self.fw["btn_go"].setVisible(show)
+        if show:
+            self.fw["btn_stop"].setText("⏸ 停止 %d/%d" % (dn, tot))
+            self.fw["btn_go"].setText("▶ 继续 %d/%d" % (dn, tot))
+        self.led("计划", "warn" if show else "off")
+        if getattr(self, "_panel", "") == "tasks": self.refreshDrawer()
+
+    def pollAll(self):
+        self.pollInfo(); self.pollSolo(); self.pollTasks()
+        self.paper("系统", "巡检完成（线路/LCD/指示灯/任务表）", "sys")
+        return {"ok": True}
+
     def ask_poll(self):
         if self.awaiting: return
         try:
@@ -427,14 +579,14 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
         except Exception: return
         if not r: return
         tid, q = r; self.awaiting = (tid, q)
-        self.echo("❓ 大模型提问%s（直接输入即答复 · stop %s 只停它）：" % (("〔任务 %s〕" % tid) if tid else "", tid or ""), kind="info")
-        self.out.append('<html><body><div style="color:%s;white-space:pre-wrap">%s</div></body></html>' % (M["mauve"], esc(q)))
+        self.paper("模型提问", ("〔任务 %s〕" % tid if tid else "") + str(q), "ask")
+        self.banner("等答复%s" % ("（%s）" % tid if tid else ""), "warn")
+
     def bus_poll(self):
         try:
             if self.bus_off is None:
-                import os as _os
                 p = detail_bus.path(core.SMS)
-                self.bus_off = _os.path.getsize(p) if _os.path.isfile(p) else 0
+                self.bus_off = os.path.getsize(p) if os.path.isfile(p) else 0
                 return
             own = os.environ.get("SMS_SESSION") or ""
             off, rows = detail_bus.tail(self.bus_off, 120, core.SMS)
@@ -442,42 +594,13 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
             for e in rows:
                 if e.get("sess") == own: continue
                 line = "〔%s·%s〕%s" % (str(e.get("sess") or "-")[-6:], e.get("kind"), str(e.get("text") or ""))
-                self.bus.append('<div style="color:%s;white-space:pre-wrap;word-break:break-word">%s</div>' % (M["dim"], esc(line[:600])))
                 self._push(line)
-            if rows:
-                sb = self.bus.verticalScrollBar(); sb.setValue(sb.maximum())
+            if rows and getattr(self, "_panel", "") == "bus": self.refreshDrawer()
         except Exception: pass
-    def refresh_tasks(self, force=False):
-        rows = []
-        try:
-            ids = sorted([f[:-5] for f in os.listdir(TD) if f.endswith(".json")]) if os.path.isdir(TD) else []
-        except Exception: ids = []
-        for tid in ids[-6:]:
-            doc = atomic_io.rjson(os.path.join(TD, tid + ".json"), default=None) or {}
-            subs = doc.get("subtasks") or []
-            if not subs: continue
-            dn = sum(1 for x in subs if x.get("status") == "done")
-            rows.append((tid, doc, subs, dn))
-        self.tasks.clear()
-        for tid, doc, subs, dn in rows:
-            it = QListWidgetItem("≡ %s · %d/%d · %s" % (tid[-14:], dn, len(subs), esc(str(doc.get("intent") or "")[:60])))
-            f = QFont("Cascadia Mono", 9)
-            it.setFont(f); it.setForeground(_c(M["blue"]))
-            self.tasks.addItem(it)
-            for x in subs:
-                mark = {"done": "✔", "running": "▶", "error": "✗", "skipped": "⤳", "stopped": "⛔"}.get(str(x.get("status")), "·")
-                line = "   %s %s %s%s" % (mark, x.get("id"), str(x.get("goal") or "")[:78], (" 〔" + str(x.get("skill")) + "〕") if x.get("skill") else "")
-                sub = QListWidgetItem(line); sub.setFont(f)
-                sub.setForeground(_c({"done": M["green"], "running": M["yellow"], "error": M["red"]}.get(str(x.get("status")), M["dim"])))
-                self.tasks.addItem(sub)
-    def refresh_side(self):
-        html_out = []
-        for n, x in enumerate(self.details[-60:], 1):
-            html_out.append('<div style="color:%s;margin:0 0 2px 0"><b>── %d ──</b></div><div style="color:%s;white-space:pre-wrap;word-break:break-word">%s</div>' % (M["dim"], n, M["fg"], esc(x)))
-        self.det.setHtml("".join(html_out) or ('<div style="color:%s">（暂无——◌思考/$工具/⧉技能/!sh/▸步骤过程行收进这里，主输出只留正文）</div>' % M["dim"]))
+    def _bus_ui(self): pass
+
+    # ---------- 沿用件 ----------
     def _hud(self, key, text, ttl):
-        """HUD 常显同步：进程内直调 hud._set/_hide（写 <SMS_HOME>/hud/state.json·置顶浮层缺活自动拉起），
-        同文本 2s 内不重复写（免每步 spawn 子进程）。"""
         try:
             self._hud_last = getattr(self, "_hud_last", {})
             k = "hud:" + key; now = time.time()
@@ -494,10 +617,9 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
         path = path or (os.environ.get("SMS_TMP") or core.SMS)
         if os.path.isdir(path):
             e = Editor(os.path.join(path, "untitled.md"), ro); path = os.path.join(path, "untitled.md")
-        else:
-            e = Editor(path, ro)
+        else: e = Editor(path, ro)
         e.show(); self.editors.append(e)
-        self.echo("已打开编辑器（%s）：%s" % ("查看" if ro else "编辑", path), kind="info")
+        self.paper("系统", "已打开编辑器（%s）：%s" % ("查看" if ro else "编辑", path), "sys")
     def history(self, up):
         if not self.hist: return True
         self.hi = max(0, min(len(self.hist), self.hi + (-1 if up else 1)))
@@ -509,13 +631,30 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
     def complete(self, ent):
         txt = ent.toPlainText()
         if not txt.strip().startswith(":"): return
-        cand = [":help", ":cmds", ":skills", ":config", ":session", ":dispatch", ":sh", ":hud", ":solo", ":agents", ":use", ":resume", ":plan", ":web", ":debug", ":detail", ":edit", ":view", ":deploy", ":workspace", ":grant", ":stop", ":restart", ":shutdown", ":smsocket", ":tts", ":repair", ":task", ":manual", ":quit"]
+        cand = [":" + m for m in (self.fw.get("keys") or fax.keys())[0]]
+        cand += [":%s" % m for m in ("help", "cmds", "skills", "config", "session", "dispatch", "sh", "hud",
+                                     "agents", "use", "resume", "plan", "debug", "edit", "view", "deploy",
+                                     "workspace", "web", "tts", "dream", "mode", "grant", "perms", "tools", "api")]
         head = txt.split("\n")[-1].strip()
-        hits = [c for c in cand if c.startswith(head)]
-        if len(hits) == 1:
-            ent.setPlainText(txt[: len(txt) - len(head)] + hits[0] + " ")
-        elif hits:
-            self.echo("补全候选：" + "、".join(hits[:16]), kind="info")
+        hits = sorted({c for c in cand if c.startswith(head)})
+        if len(hits) == 1: ent.setPlainText(txt[: len(txt) - len(head)] + hits[0] + " ")
+        elif hits: self.paper("系统", "补全候选：" + "、".join(hits[:20]), "sys")
+    def qtver(self):
+        try:
+            from PyQt6.QtCore import QT_VERSION_STR; return QT_VERSION_STR
+        except Exception: return "?"
+    def probe_finish(self):
+        """--probe 端到端回归：出纸口纯文本落盘并退出（CLI/CI 无窗验证路由结果）。"""
+        try:
+            p = os.environ.get("SMS_QT_PROBE_DUMP") or "qt_probe.txt"
+            io.open(p, "w", encoding="utf-8").write(self.out.toPlainText())
+            sh = os.environ.get("SMS_QT_SHOT")
+            sh and self.grab().save(sh)
+            print("PROBE_DUMP " + p + " chars=" + str(len(self.out.toPlainText())) +
+                  " details=" + str(len(self.details)) + " keys=" + str(len(self.fw)))
+        except Exception as e:
+            print("PROBE_FAIL " + repr(e)[:160])
+        QApplication.instance().quit()
     def closeEvent(self, ev):
         for w in list(self.running.values()):
             with contextlib.suppress(Exception): w["w"].requestInterruption(); w["w"].quit(1200)
@@ -523,24 +662,21 @@ QTabBar::tab:selected{color:%(blue)s;background:%(panel)s}QPlainTextEdit{backgro
             import ask_channel; ask_channel.disarm()
         super().closeEvent(ev)
 
+def _envs(): return os.environ
 def _c(hexcol):
-    from PyQt6.QtGui import QColor
-    return QColor(hexcol)
+    from PyQt6.QtGui import QColor; return QColor(hexcol)
 
 
 def main(argv=None):
     argv = [a for a in (argv if argv is not None else sys.argv[1:]) if a != "--"]
     selftest = "--selftest" in argv
-    if selftest:
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    if selftest: os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication(sys.argv[:1])
     app.setApplicationName("sms-shell-gui")
     win = Shell()
-    if selftest:
-        return _selftest(app, win)
+    if selftest: return _selftest(app, win)
     win.show()
-    pos = [a for a in argv if a not in ("--selftest",)]
-    pos = [a for a in pos if not a.startswith("--probe")]
+    pos = [a for a in argv if a != "--selftest" and not a.startswith("--probe")]
     probe = next((a.split("=", 1)[1] for a in argv if a.startswith("--probe=")), "")
     if probe:
         os.environ["SMS_QT_PROBE_DUMP"] = os.environ.get("SMS_QT_PROBE_DUMP") or os.path.join(
@@ -554,13 +690,11 @@ def main(argv=None):
     return app.exec()
 
 def _selftest(app, win):
-    """离线自检（不发模型请求）：布局成图＋行分类/上色/排队/停止词/任务表渲染全跑一遍。"""
-    out = {}
-    win.show()
-    app.processEvents()
-    cases = ["sms-shell 速查", "• notice 行", "$ exec ls -la", "◌ 思考过程行", "▸ 步骤行", "✗ 错误行", "⧉general_answer▸ 派发对话正文", "! sh 输出", "≡ task 进度", "带 `代码` 与 C:\\path\\file.py 的正文"]
-    for c in cases:
-        win.on_line("t9", c)
+    """离线自检（不发模型请求）：传真机机身成图＋机身件计数＋免密钥面核对＋行分类/上色/排队/停止/抽屉面板全跑。"""
+    win.show(); app.processEvents()
+    cases = ["sms-shell 速查", "• notice 行", "$ exec ls -la", "◌ 思考过程行", "▸ 步骤行", "✗ 错误行",
+             "⧉general_answer▸ 派发对话正文", "! sh 输出", "≡ task 进度", "带 `代码` 与 C:\\path\\file.py 的正文"]
+    for c in cases: win.on_line("t9", c)
     win.echo("用户话语测试行", kind="me")
     for e in ({"kind": "task", "meta": {"id": "task-20261009-000000-000", "done": 3, "total": 5, "eta_s": 96}},
               {"kind": "edit", "text": "已改 tmp/a.py"}):
@@ -569,18 +703,42 @@ def _selftest(app, win):
     win.tick(); app.processEvents()
     win.stop_one("t9")
     win.pend.append("排队行示例")
-    win.refresh_tasks(); win.refresh_side(); app.processEvents()
-    shot = os.path.join(os.environ.get("SMS_TMP") or os.getcwd(), "qt_selftest.png")
+    win.pollAll(); app.processEvents()
+    panels = {}
+    for nm in ("tasks", "plans", "chains", "sessions", "skills", "files", "config", "perms",
+               "detail", "bus", "ws", "mode", "sys", "qq", "tts"):
+        win._open(nm); app.processEvents()
+        panels[nm] = len(win.fw["dbody"].toHtml())
+    win._open("tasks"); app.processEvents()
+    task_tbl = win.fw["dbody"].toPlainText()
+    win.closeDrawer(); app.processEvents()
+    win.paper("系统", "卡纸示例", "err")
+    shot = os.path.join(os.environ.get("SMS_TMP") or os.getcwd(), "qt_fax_selftest.png")
     ok = win.grab().save(shot)
     from PyQt6.QtCore import QT_VERSION_STR, PYQT_VERSION_STR
-    out = {"visible_rows": win.out.toPlainText().count("\n"), "details": len(win.details),
-           "tasks_rows": win.tasks.count(), "bus_widget": win.bus is not None,
+    META_, METAD_, PAD_, QUICK_, F1_ = win.fw.get("keys") or fax.keys()
+    leak = fax.leaked(fax.api("/api/info")) or fax.leaked(fax.api("/api/perms"))
+    out = {"visible_rows": getattr(win, "papers", 0),
+           "roll_plain": win.out.toPlainText().count("\n"),
+           "keys_total": len(win.fw), "details": len(win.details),
+           "meta_keys": len(META_), "metad": len(METAD_), "pad": len(PAD_), "quick": len(QUICK_),
+           "f1_groups": len(F1_), "drawers": len(fax.DRAWERS),
+           "page_bytes": len(fax.page()), "qss_len": len(win.styleSheet()),
+           "panels": panels, "panel_min": min(panels.values()) if panels else 0,
+           "task_table_len": len(task_tbl),
+           "no_token_face": not leak, "leaked_key": leak,
+           "gate_removed": not hasattr(win, "gate") and not hasattr(win, "tok"),
+           "no_gate_text": ("TOKEN" not in win.out.toPlainText()),
            "stop_word_hit": stop.is_stop_word("停止"), "paint_html": bool(paint("$ ls")),
            "queued": len(win.pend), "running": sorted(win.running), "screenshot": shot, "saved": bool(ok),
-           "qt": QT_VERSION_STR, "pyqt": PYQT_VERSION_STR,
+           "qt": QT_VERSION_STR, "pyqt": PYQT_VERSION_STR, "banner": win.fw["banner"].text(),
            "banner_len": len(core.banner()), "hud_state": os.path.join(core.SMS, "hud", "state.json")}
     print("SELFTEST " + json.dumps(out, ensure_ascii=False))
-    return 0 if out["saved"] and out["visible_rows"] >= 8 else 1
+    ok_all = (out["saved"] and out["visible_rows"] >= 10 and out["meta_keys"] >= 30
+              and out["no_token_face"] and out["f1_groups"] >= 5 and out["roll_plain"] >= 4
+              and out["details"] >= 5 and out["panel_min"] >= 40 and out["task_table_len"] >= 2
+              and len(panels) == 15 and out["qss_len"] > 1500)
+    return 0 if ok_all else 1
 
 if __name__ == "__main__":
     if sys.stdout is None or sys.stderr is None:

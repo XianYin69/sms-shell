@@ -1,5 +1,5 @@
 @echo off
-rem sms-shell-gui launcher (GUI entry, Windows, ASCII only): python sms-shell-gui.py preferred (PyQt6 shell_qt.py, PySide6 shell_gui.py fallback inside, no Qt -> sms-shell-tui); first arg api -> locate.py; python missing -> ps1 native DOS TUI via sms_shell.ps1 (GUI needs python, so console shell is the only python-less path). Deploy = copy all bin files to target path.
+rem sms-shell-gui launcher (GUI entry, Windows, ASCII only): python sms-shell-gui.py preferred (PyQt6 shell_qt.py + shell_qt_fax.py fax-console mirror, no token gate on GUI; PySide6 shell_gui.py fallback inside, no Qt -> sms-shell-tui); first arg api -> locate.py; python missing -> ps1 native DOS TUI via sms_shell.ps1 (GUI needs python, so console shell is the only python-less path). Deploy = copy all bin files to target path.
 chcp 65001 >nul
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8

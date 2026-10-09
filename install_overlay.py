@@ -81,7 +81,8 @@ def shell_files(base):
             # 壳层自有件＝核仓不追踪者；core 独有件（sys_shells/web_shell 等）绝不列此，
             # 否则覆盖安装会把「核」再抄回核仓＝双仓边界二次混淆。
             if (p.startswith("bin/") or p in ("sms.py", "sms", "sms.cmd")
-                    or re.match(r"skill/scripts/shell[^/]*\.(py|ps1)$", p)
+                    or re.match(r"skill/scripts/shell[^/]*\.(py|ps1)$", p)  # 批38：stale 侧原 \\.（两反斜杠）永不命中，归一为 \.
+                    or re.match(r"tests/test_shell_qt[^/]*\.py$", p)  # 批38：图形壳传真机镜像回归随壳层件同族进出
                     or p == "skill/scripts/web_page.html"):
                 out.append(p)
     return out
@@ -108,12 +109,13 @@ for dp, dn, fn in os.walk(dst):
     rel_d = os.path.relpath(dp, dst).replace("\\", "/")
     for x in fn:
         r2 = os.path.relpath(os.path.join(dp, x), dst)
-        rl = r2.replace(os.sep, "/")
+        rl = r2.replace(os.sep, "/").replace("\\", "/")  # 批38：Windows 反斜杠归一（否则 tests\\x.py 永不命中）
         if r2.replace("/", os.sep) in _srcset:
             continue
         top = rl.split("/")[0] if rel_d == "." else rel_d.split("/")[0]
         if (top == "bin" or top in ("sms.py", "sms", "sms.cmd")
-                or re.match(r"^(skill/scripts/)?shell[^/]*\\.(py|ps1)$", rl)
+                or re.match(r"^(skill/scripts/)?shell[^/]*\.(py|ps1)$", rl)  # 批38：stale 侧原 \\.（两反斜杠）永不命中，归一为 \.
+                or re.match(r"^tests/test_shell_qt[^/]*\.py$", rl)  # 批38：图形壳传真机镜像回归随壳层件同族进出
                 or rl == "skill/scripts/web_page.html"):
             stale.append(r2)
 for rel in stale:

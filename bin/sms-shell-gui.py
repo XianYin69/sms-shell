@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sms-shell-gui (GUI entry) launcher: Qt graphical shell (PyQt6 -> skill/scripts/shell_qt.py; PySide6 -> shell_gui.py), source skill located via adjacent->SMS_SKILL->sms_skill (same 3-level resolve as bin/locate.py, NO hardcoded path); no Qt binding -> hand off to sibling sms-shell-tui.py; first arg api -> locate.py (same as TUI entry). Positional args = ONE utterance submitted into the GUI window."""
+"""sms-shell-gui (GUI entry) launcher: Qt graphical shell = mirror of the web fax console (PyQt6 -> skill/scripts/shell_qt.py + shell_qt_fax.py; layout/keys parsed live from web_page.html, panels call web_shell getters in-process, NO token gate on the GUI side; PySide6 fallback -> shell_gui.py), source skill located via adjacent->SMS_SKILL->sms_skill (same 3-level resolve as bin/locate.py, NO hardcoded path); no Qt binding -> hand off to sibling sms-shell-tui.py; first arg api -> locate.py (same as TUI entry). Positional args = ONE utterance submitted into the GUI window."""
 import os, sys, subprocess, importlib.util
 for s in (sys.stdout, sys.stderr):
     try: s.reconfigure(encoding="utf-8", errors="replace")
