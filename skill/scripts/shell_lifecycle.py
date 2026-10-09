@@ -4,7 +4,7 @@
 CREATE_NO_WINDOW|SW_HIDE＝重启后子进程 GetConsoleWindow()==0 隐形，用户看不到新窗口）；
 ② kill_others 去 PowerShell 依赖——主路径＝shells.json 壳登记表 + proc_guard 后代，CIM 仅作
 带 TTL 缓存的兜底，命令行取不到一律不杀（严禁误杀非 SMS python）；③ 回收面从「只杀壳」扩到
-「壳 ∪ 命令行含 skill_manage_system 的 core 后台（web_shell/planned/hud/qq_listen/dream_bg/tts）」。
+「壳 ∪ 命令行含 smsystem-suit 的 core 后台（web_shell/planned/hud/qq_listen/dream_bg/tts）」。
 restart＝通报→写旗标→落链→分离式拉起 bin/sms-shell.py（新窗）→reclaim 清旧壳与 core 后台
 （含本进程，os._exit 硬退，杜绝新旧并存）；
 shutdown＝通报＋reclaim（收 HUD/TTS＋清所有壳与 core 后台）＋落链；
@@ -20,7 +20,7 @@ S = os.path.dirname(os.path.abspath(__file__))
 # 批34：启动器可经 env SMS_LAUNCHER 覆盖（部署态 bin 与脚本不同根时用之），默认＝同仓 bin/sms-shell.py
 BIN = os.environ.get("SMS_LAUNCHER") or os.path.join(os.path.dirname(os.path.dirname(S)), "bin", "sms-shell.py")
 PATTERNS = ("shell_tui_textual.py", "shell_tui.py", "shell_console.py", "shell_gui.py", "shell_qt.py", "sms-shell.py")
-SMS_MARK = ("skill_manage_system", "SMS-core", "SMS-shell")  # 批34 移动 Developin：命令行特征串三认
+SMS_MARK = ("smsystem-suit", "skill_manage_system", "SMS-core", "SMS-shell")  # 批34 移动 Developin：命令行特征串三认
 def _sms_hit(cl): return any(m in (cl or "") for m in SMS_MARK)
 CONF = {"m": "", "at": 0.0}
 # A1 重启必须出现可用新窗口：CREATE_NEW_CONSOLE(0x10)；绝不含 CREATE_NO_WINDOW(0x08000000)
@@ -203,8 +203,8 @@ def _shell_pids(exclude=(), force=False, sms=None, cim=True, global_ok=None):
                 hits.append(p)
     return hits
 def _sms_pids(exclude=(), force=False, sms=None, cim=True, global_ok=None):
-    """A4 回收面＝壳 ∪ 命令行含 skill_manage_system 的 python ∪ SVC pid 文件。
-    铁律：候选必须 活 + 不在 keep + 命令行命中 PATTERNS 或含 skill_manage_system；
+    """A4 回收面＝壳 ∪ 命令行含 smsystem-suit 的 python ∪ SVC pid 文件。
+    铁律：候选必须 活 + 不在 keep + 命令行命中 PATTERNS 或含 smsystem-suit；
     命令行取不到一律不杀——两个例外＝SVC pid 文件与 shells.json 登记表（登记表行已由
     _row_trust 按 cl＋创建时间双重校验，故不依赖 CIM 也能回收；CIM 来源必须命令行命中才进表）。"""
     sms = sms or resolve_home.ensure()
@@ -245,7 +245,7 @@ def _kill(pid, tree=False):
     except Exception:
         return False
 def kill_others(exclude=(), why="", force=False, sms=None, cim=True, global_ok=None):
-    """清掉旧壳＋含 skill_manage_system 的 core 后台——重启后只保留新实例，关闭后无残留。
+    """清掉旧壳＋含 smsystem-suit 的 core 后台——重启后只保留新实例，关闭后无残留。
     A5：回收面由 _shell_pids 扩到 _sms_pids（旧版只杀壳＝漏收 dream_bg/tts/ff_lite 等后台）。"""
     sms = sms or resolve_home.ensure()
     keep = set([os.getpid()] + [int(x) for x in exclude if x])
@@ -269,7 +269,7 @@ def _alive(pid):
 def kill_services(exclude=(), sms=None, budget=1.5, why=None, global_ok=None):
     """回收壳自己拉起的一切后台进程——DETACHED 子进程不随 os._exit 而亡，正是「点了确认关闭程序还在」的真根因。
     三路取 pid：① SVC pid 文件表（不活只清文件绝不误杀）② 本进程全部后代（proc_guard Toolhelp32·零 PowerShell）
-    ③ A3 缓存 CIM 兜底（预算内才跑·命令行不含 skill_manage_system 一律不杀）。
+    ③ A3 缓存 CIM 兜底（预算内才跑·命令行不含 smsystem-suit 一律不杀）。
     taskkill /T /F 逐个杀，总预算 budget 秒，异常一律静默。
     why＝调用场景（close_guard._bye 按规格传「窗口/控制事件」·缺省按 close 记链）。"""
     t0 = time.time(); sms = sms or resolve_home.ensure()
@@ -334,7 +334,7 @@ def _spawn(sms):
     return ("已拉起新实例 pid=%s（%s）" % (pr.pid, BIN), pr.pid)
 def reclaim(exclude=(), why="", sms=None, global_ok=None):
     """A7 关闭/重启的统一回收口：先收用户看得见的服务（HUD/网页壳/planned/qq），
-    再清旧壳与含 skill_manage_system 的 core 后台。回 (服务 pids, 其它 pids)。"""
+    再清旧壳与含 smsystem-suit 的 core 后台。回 (服务 pids, 其它 pids)。"""
     svc = kill_services(exclude=exclude, sms=sms, why=why, global_ok=global_ok)
     others = kill_others(exclude=exclude, why=why, sms=sms, global_ok=global_ok)
     return svc, others
@@ -507,18 +507,19 @@ def auto_resume(sms=None):
     """兼容壳（旧入口·新代码请直接用 resume）：续跑话语取 resume()[1]（同上·不二次消费旗标）。"""
     return (resume(sms) if _LAST is None else _LAST)[1]
 def _fake_rows(pr, ps):
-    """selftest 用假 CIM 行：pr＝命令行不含 SMS 特征（必须被排除），ps＝含 skill_manage_system。"""
+    """selftest 用假 CIM 行：pr＝命令行不含 SMS 特征（必须被排除），ps＝含 smsystem-suit。"""
     return [[pr.pid, "python.exe -B -c import time"],
-            [ps.pid, "python.exe -B -c time # skill_manage_system"]]
+            [ps.pid, "python.exe -B -c time # smsystem-suit"]]
 def _selftest():
     """批29 回归：① _is_shell 零 PowerShell ② kill_services 真收 DETACHED 后代 ③ 死 pid 只清文件不误杀。
     批30 追加（A9）：④ _spawn 用 CREATE_NEW_CONSOLE 且不含 CREATE_NO_WINDOW ⑤ 主路径零 PowerShell
     （no_window.run 被 monkeypatch 抛异常后 _sms_pids 仍靠登记表给出结果）⑥ 命令行不含
-    skill_manage_system/PATTERNS 的假 pid 必须被 _sms_pids 排除（防误杀）⑦ register/unregister 幂等
+    smsystem-suit/PATTERNS 的假 pid 必须被 _sms_pids 排除（防误杀）⑦ register/unregister 幂等
     ＋死 pid 自动剔除。回收只在 tmp 镜像根里跑＝真服务进程不受扰；真实 pid 文件先备份后还原。"""
     import shutil, tempfile
     SHELL_CL = "python.exe -B sms-shell.py（selftest 壳行）"
     JUNK_CL = "python.exe close_guard.py arm"
+    assert _sms_hit("python -B x.py # skill_manage_system") and _sms_hit("python -B x.py # smsystem-suit"), "兼容红线：旧名/新名命令行都必须命中回收面"
     t = time.time(); assert not _is_shell(), "直跑本文件应判非壳（argv 不含 PATTERNS）"
     dt = time.time() - t
     assert dt < 0.2, "_is_shell 耗时 %.3fs＝仍在跑 PowerShell（旧版实测 2.24s）" % dt
@@ -534,7 +535,7 @@ def _selftest():
         pr = no_window.Popen([sys.executable, "-B", "-c", "import time;time.sleep(60)"],
                              creationflags=0x08000000 | 0x8)
         ps = no_window.Popen([sys.executable, "-B", "-c",
-                              "import time;time.sleep(60)  # skill_manage_system bg"],
+                              "import time;time.sleep(60)  # smsystem-suit bg"],
                              creationflags=0x08000000 | 0x8)
         time.sleep(0.6)
         import proc_guard as pg
@@ -543,7 +544,7 @@ def _selftest():
         assert ps.pid in kin, "后代枚举未命中模拟 core 后台 %s" % ps.pid
         _CIM_CACHE.update(at=time.time(), rows=_fake_rows(pr, ps))
         got = _sms_pids(sms=root, global_ok=True)
-        assert ps.pid in got, "A9⑥ 命令行含 skill_manage_system 的 core 后台未被回收＝漏收真根因"
+        assert ps.pid in got, "A9⑥ 命令行含 smsystem-suit 的 core 后台未被回收＝漏收真根因"
         assert pr.pid not in got, "A9⑥ 命令行不含 SMS 特征的进程进了回收表＝会误杀非 SMS python"
         assert os.getpid() not in got, "自己进了回收表"
         pid = register_shell(sms=root, pid=pr.pid, cl=SHELL_CL)

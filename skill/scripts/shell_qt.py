@@ -33,7 +33,8 @@ def _scripts():
         except Exception: skill = ""
         for base in (skill, home):
             if not base: continue
-            for sub in ("skill/scripts", os.path.join("skills", "skill_manage_system", "skill", "scripts")):
+            for sub in ("skill/scripts", os.path.join("skills", "smsystem-suit", "skill", "scripts"),
+                        os.path.join("skills", "skill_manage_system", "skill", "scripts")):
                 cand.append(os.path.join(base, sub))
         # 壳层件在混合体里另有落点：<SMS_HOME>/skills/sms-shell/scripts 与 <sms_skill>/../sms-shell/scripts
         for c in (os.path.join(home, "skills", "sms-shell", "scripts"),
@@ -170,7 +171,7 @@ class Input(QPlainTextEdit):
 class Shell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("sms-shell · PyQt6 图形壳（默认 skill_manage_system 数据流）")
+        self.setWindowTitle("sms-shell · PyQt6 图形壳（默认 smsystem-suit 数据流）")
         self.resize(1240, 780)
         self.running, self.pend, self.hist, self.details = {}, [], [], []
         self.seq = self.bus_off = self.hi = 0

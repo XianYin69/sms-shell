@@ -19,7 +19,7 @@ class Worker(QThread):
 class Shell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("sms-shell — agent 数据流（默认 skill_manage_system）")
+        self.setWindowTitle("sms-shell — agent 数据流（默认 smsystem-suit）")
         self.resize(920, 560); self.workers = []
         box = QVBoxLayout(); central = QWidget(); central.setLayout(box); self.setCentralWidget(central)
         self.out = QTextEdit(); self.out.setReadOnly(True)

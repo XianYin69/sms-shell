@@ -39,7 +39,7 @@ def find_core():
             c = ""
         if _ok(c):
             return c
-    for cand in ("SMS-core", "sms-core", "SMS", "skill_manage_system"):
+    for cand in ("SMS-core", "sms-core", "SMS", "smsystem-suit", "skill_manage_system"):
         p = os.path.normpath(os.path.join(HERE, "..", cand))
         if _ok(p):
             return p

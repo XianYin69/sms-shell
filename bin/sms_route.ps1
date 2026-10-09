@@ -7,7 +7,7 @@ function SkillScripts {
   foreach ($p in $c) { if ($p -and (Test-Path (Join-Path $p 'shell.py'))) { return $p } }
   $null }
 function Run-Engine($script, $argv) {
-  if (-not ($d = SkillScripts)) { Write-Warn '未定位托管 skill：deploy 登记 sms_skill 或设 SMS_SKILL=<skill_manage_system 绝对路径>'; return }
+  if (-not ($d = SkillScripts)) { Write-Warn '未定位托管 skill：deploy 登记 sms_skill 或设 SMS_SKILL=<smsystem-suit 绝对路径>'; return }
   $env:PYTHONUTF8 = '1'; $env:PYTHONIOENCODING = 'utf-8'; $env:SMS_WORKSPACE = SMS_WS; $env:SMS_TMP = SMS_WTmp; Write-Dim ('[' + $script + ']')
   & python -B (Join-Path $d $script) @argv 2>&1 | ForEach-Object { Write-Out ([string]$_) }
 }
@@ -30,7 +30,7 @@ function Handle-Line($line, $sink) {
     elseif ($m -eq 'config') { Show-Cfg $(if ($a.Count) { $a[0] } else { 'status' }) $(if ($a.Count -gt 1) { $a[1..($a.Count - 1)] } else { , @() }) }
     elseif ($m -eq 'agents') { Write-Line ('检出：' + ((@(Detected)) -join '、') + ' · 当前：' + (Current) + ' · 技能前缀：' + (StateGet 'skill_prefix' 'on') + ' · 切换：:use <name>（gateway＝原生直连）') }
     elseif ($m -eq 'use') { if (-not $a.Count) { Write-Line '用法 :use <name>' } else { StatePut 'current_agent' $a[0]; Write-Line ('切到 agent：' + $a[0] + $(if ($a[0] -ne 'gateway' -and (CfgGet 'llm_gateway.enabled' $false)) { '（已记住——网关开启期间话语仍恒走 gateway，:config set llm_gateway.enabled false 后生效）' } elseif (@(Detected) -notcontains $a[0]) { '（未检出——配 agent_cli {bin,args} 并确保在 PATH）' } else { '' })) } }
-    elseif ($m -eq 'skill') { StatePut 'skill_prefix' $(if ($a.Count -and $a[0] -eq 'off') { 'off' } else { 'on' }); Write-Line ('skill_manage_system 前缀：' + (StateGet 'skill_prefix' 'on')) }
+    elseif ($m -eq 'skill') { StatePut 'skill_prefix' $(if ($a.Count -and $a[0] -eq 'off') { 'off' } else { 'on' }); Write-Line ('smsystem-suit 前缀：' + (StateGet 'skill_prefix' 'on')) }
     elseif ($m -eq 'image') { $script:IMG = $(if ($a.Count -and (Test-Path (($a -join ' ')))) { ($a -join ' ') } else { $null }); Write-Line $(if ($script:IMG) { '已附图（下一句生效）：' + $script:IMG } else { '图片不存在：' + ($a -join ' ') }) }
     elseif ($m -in @('dispatch', 'session', 'edit', 'view', 'mode')) { if ($m -eq 'dispatch') { if ($a.Count -ge 2) { Run-Engine 'agent_dispatch.py' (@('skill') + $a) } else { Write-Line '用法 :dispatch <技能id> <诉求>（技能对等对话真派发·批23 每派发自开独立 conv）' } } elseif ($m -eq 'session') { Run-Engine 'chains.py' (@('session') + $(if ($a.Count) { $a } else { , @('current') })) } else { Write-Line '内置编辑器/界面模式仅 Textual TUI 提供（python 入口 sms-shell·F7/F8）·原生壳话语恒＝对话·文件操作用 :sh' } }
     elseif ($ENGINE[$m]) { $x = $a; if ($m -eq 'cmds') { $x = $(if ($a.Count) { @('show') + $a } else { @('help') }) } elseif ($m -eq 'intent') { $x = @('intent') + $a } elseif ($m -eq 'alias') { $x = @('add') + $a + @('--write') } elseif ($m -eq 'unalias') { $x = @('rm') + $a + @('--write') } elseif ($m -eq 'grant') { $x = $a + @('--write') } elseif ($m -eq 'skills') { $x = @('list') } elseif ($m -eq 'index') { if (-not $a.Count) { Run-Engine 'skills_config.py' @('roots'); return }; $x = @('--add-root') + $a + @('--write') }; Run-Engine $ENGINE[$m] $x }
