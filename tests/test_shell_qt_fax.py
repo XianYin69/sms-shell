@@ -206,3 +206,49 @@ def test_overlay_keeps_fax_pair():
         assert "shell[^/]*" in src, "壳层清单正则须以 shell* 覆盖新件（shell_qt_fax.py）"
         assert os.path.isfile(FAX) and os.path.isfile(os.path.join(os.path.dirname(ROOT), "SMS-shell",
                                        "skill", "scripts", "shell_qt_fax.py")), "镜像件须同时在壳层仓与核仓"
+
+
+# ---------------- 批40 零顶栏三区骨架（表 010-213903-130 镜像件侧覆盖） ----------------
+def test_fax_qss_covers_on_demand_layer():
+    """样式表须补齐按需层且不再含 brand 横条选择器：ctlzone／palette／palList／palEdit／mouth 走纸态。"""
+    fax = _local("shell_qt_fax")
+    q = fax.qss(fax.css_vars())
+    for need in ("QFrame#ctlzone{", "QDialog#palette{", "QListWidget#palList{", "QLineEdit{",
+                 'QFrame#mouth[st="feed"]', "QFrame#tear[st="):
+        assert need in q, "按需层样式缺失：" + need
+    assert "QLabel#" + "brand{" not in q and "brand" + "Sub" not in q, "brand 横条样式须随顶栏一并拆掉"
+    assert "${" not in q and "%s" not in q, "样式表占位符未替换干净"
+    assert "qlineargradient" in q, "零顶栏后机身仍须网页端渐变派生"
+
+
+def test_fax_build_zero_topbar_and_key_compat():
+    """装配件＝零顶栏：无 brand 横条、控制面装配即收起；fw 键面与批38/39 逐字兼容（tests 与壳两侧共用）。"""
+    src = _src(FAX, "")
+    build = src.split("def build(win, ent):")[1].split("# ---------------- t6 裁纸刀")[0]
+    assert "SMS-" + "FAX · GUI" not in src, "brand 横条文案不得残留于镜像件"
+    assert 'w["ctlzone"]' in build and 'w["ctlzone_btn"]' in build, "控制面板须按需化（含唤出键）"
+    assert "ctl.hide()" in build, "控制面板装配即收起（不常驻占高）"
+    for keep in ("w[\"banner\"]", 'w["roll"]', 'w["mouth"]', 'w["tear"]', 'w["blade"]',
+                 'w["blade_tag"]', 'w["blade_pos"]', 'w["eink"]', 'w["einkzone"]',
+                 'w["drawer"]', 'w["dtitle"]', 'w["dbody"]', 'w["btn_stop"]', 'w["btn_go"]',
+                 'w["btn_all"]', 'w["btn_speak"]', 'w["keys"]'):
+        assert keep in build, "批38/39 fw 键面须逐字保留：" + keep
+    assert 'w["lcd_" + k]' in build and 'w["led_" + nm]' in build, "LCD/LED 仍由循环产出（键名不变）"
+    assert "menuBar" not in src, "镜像件不得代壳挂原生菜单栏"
+
+
+def test_fax_selftest_gates_zero_topbar():
+    """镜像件 selftest 须把零顶栏当硬判据并入放行式（rc=0 才放行·防只改视觉不进门禁）。"""
+    src = _src(FAX, "")
+    for need in ('ok["qss_topbar"]', 'ok["build_zero_topbar"]',
+                 'and ok["qss_topbar"] and ok["build_zero_topbar"]',
+                 'and ok["assembly_no_process_face"] and ok["fw_batch41_keys"]) else 1',
+                 'nb = "SMS-" + "FAX · GUI"', 'bs = "brand" + "Sub"',
+                 'pf = ("sub" + "process", "Q" + "Process", "soc" + "ket", "HTTP" + "Server",'):
+        assert need in src, "镜像件 selftest 缺零顶栏判据/自指拆分：" + need[:44]
+    ret = src.split("return 0 if", 1)[1]
+    assert 'ok["qss_topbar"]' in ret and 'ok["build_zero_topbar"]' in ret and 'ok["fw_batch41_keys"]' in ret, \
+        "零顶栏与批41 分屏判据须进放行式（rc=0 才放行）"
+    seg = src.split("def selftest")[1]
+    assert "SMS-FAX · GUI" not in seg.replace('nb = "SMS-" + "FAX · GUI"', ""), \
+        "判据字面量须拆分，否则自指含被检串＝恒假阴（本批踩过）"

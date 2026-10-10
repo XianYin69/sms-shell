@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """shell_qt_fax.py — GUI 的「传真机镜像件」（shell_qt.py 专用模块，不独立成壳）。
-① 版式真源＝网页端 web_page.html：CSS :root 变量 → QSS 渐变（机身金属/功能区/实体键五态/LCD/米纸卷/抽屉），
+① 版式真源＝网页端 web_page.html：CSS :root 变量 → QSS 渐变（机身金属/功能区/实体键五态/LCD/米纸卷/抽屉/
+   按需层 ctlzone·命令面板 palette·走纸态 mouth/tear[st=…]），
    JS 常量 META·METAD·PAD·QUICK·F1 → 元指令键阵、拨号盘、常用拨号、F1 六组——网页端改了 GUI 跟着改，不留两份口径；
    页面取不到时用内置兜底（值取自网页端现文本），保证离仓仍可成图。
 ② 数据真源＝web_shell 面板 getter/poster **进程内直调**：GUI 端不做任何密钥验证（本机窗口即可信·绝不开端口·
@@ -12,9 +13,19 @@
    t8 送稿口 CRT 绿字黑底成像（crt_colors·crt_scanlines·crt_afterglow·crt_block_cursor 算式在此，逐帧绘制在
    shell_qt.Input 的 paintEvent·不改文本模型与键盘语义）、
    t10 墨水屏消息面板（EINK_SECTIONS 只「会话信息／任务表／后台任务」三段·低饱和灰白·无动效·仿电子墨水印）——
-   页面没有这些 :root 变量时按内置兜底（css_vars 的 setdefault），网页端补同名变量即刻生效。
+⑤ 装配件（批41 上送稿口＋下左右分屏）：build() 不装 brand 横条、shell_qt 不挂原生菜单栏——上＝B 送稿口
+   （CRT 输入＋送稿键＋常用拨号·常驻第一位），其下 QSplitter#split 左右分屏＝左纸卷 A（出纸正文＋状态行
+   LCD 六格/LED 七灯＋mouth/tear/blade＋动作条）｜右 QSplitter#psplit（上预览 D·下终端 E·两件可切分可折叠），
+   C 墨水屏三段与按需控制面板 ctlzone（META 键阵·F1 六组·拨号盘）＋抽屉保持批40 语义（装配即 hide·Ctrl+M/Ctrl+I）；
+   菜单职能＝命令面板（QDialog#palette＋QListWidget#palList·Ctrl+K）＋右键菜单。
+   fw 键面与批38/39/40 逐字兼容（banner/roll/lcd_*/led_*/blade*/eink*/btn_*/keys 全保留），批41 增
+   split/psplit/previewzone/preview/pv_open/pv_fold/pv_stat/termzone/term/term_in/t_run/t_fold/t_paper/t_clear/t_stat。
+   视图轮转位次真源＝VIEW_NAMES 五态（纸卷 A／送稿 B／墨水屏 C／预览 D／终端 E）＋view_next 纯算式；
+   预览取数收口＝preview_text（/api/file·/api/files·/api/detail 返回 → 文本＋行数＋是否兜底）、
+   终端行分类＝term_line_kind（纯算式·壳侧按类上色）——两件的算式都在本件，壳只接绘制与状态。
+   页面没有这些 :root 变量时按内置兜底（css_vars 的 setdefault），网页端补同名变量即刻生效。   页面没有这些 :root 变量时按内置兜底（css_vars 的 setdefault），网页端补同名变量即刻生效。
 自检：python -B shell_qt_fax.py --selftest（offscreen·解析＋样式＋数据桥＋出纸渲染＋三视图件，不发模型请求）"""
-import os, sys, re, json, time
+import os, sys, re, json, time, inspect
 
 S = os.path.dirname(os.path.abspath(__file__))
 # 本目录优先：混合/覆盖安装环境里 PYTHONPATH 常带着核仓旧副本，同目录件须压过它（selftest 才测到本仓文件）
@@ -175,6 +186,8 @@ def qss(v=None):
     chassis 机身 / zone 功能区 / grp·dial 分组 / lcd 屏 / led 灯条 / tray 口腔 / roll 米纸卷 /
     feeder·cmd 进纸器 / drawer 抽屉 / k·kacc·kwarn·kstop·kgo·ksm 实体键五态 /
     blade·bladeTag 裁纸刀（t6·[st=…] 五态刀条）/ einkzone·eink 墨水屏面板（t10·实色无动效）/
+    split·psplit 分屏（批41·左右主分屏＋右栏上下分屏）/ previewzone·preview·lnr 预览（行号栏自绘）/
+    termzone·term·termIn 内嵌终端（QProcess·无控制台窗口）/
     cmd[crt="1"] 送稿口 CRT 绿字黑底（t8·扫描线·余辉·块光标由 shell_qt.Input 逐帧绘，QSS 只管实色底）。"""
     from string import Template
     v = v or css_vars()
@@ -206,8 +219,14 @@ def qss(v=None):
     return Template("""
 QWidget#chassis{background:${chassis};border:1px solid ${edge};border-radius:14px}
 QLabel{background:transparent}
-QLabel#brand{color:#16202b;font-size:17px;font-weight:bold;letter-spacing:3px}
-QLabel#brandSub{color:#4a5866;font-size:11px;letter-spacing:1px}
+QFrame#ctlzone{background:${grp};border:1px solid ${edge};border-radius:12px}
+QFrame#mouth[st="feed"],QFrame#tear[st="feed"]{background:${amber};border:1px solid #8a6a2a;border-radius:6px}
+QDialog#palette{background:${drawer}}
+QListWidget#palList{background:rgba(255,255,255,.86);color:${ink};border:1px solid #a9b6c4;
+ border-radius:6px;font-size:13px;padding:4px;outline:none}
+QListWidget#palList::item:selected{background:${cyan};color:#06202a}
+QLineEdit{background:#ffffff;color:${ink};border:1px solid #a9b6c4;border-radius:6px;padding:5px 7px;font-size:13px}
+QLineEdit:focus{border:1px solid ${cyan}}
 QLabel#banner{color:#3c4a58;font-size:11px}
 QFrame#zone{background:${zone};border:1px solid ${edge};border-radius:12px}
 QFrame#grp{background:${grp};border:1px solid ${edge};border-radius:9px}
@@ -251,6 +270,20 @@ QPushButton[tone="stop"]{color:#ffffff;border-color:#7c1414;background:${stopn}}
 QPushButton[tone="go"]{color:#04240f;border-color:#1d6b41;background:${gon}}
 QPushButton[sm="1"]{min-width:0;padding:3px 7px;font-size:11px;border-radius:7px}
 QPushButton:disabled{color:#77828e;background:${kp};border-color:#8b98a7}
+QSplitter#split,QSplitter#psplit{background:transparent;border:none}
+QSplitter#split::handle:horizontal{background:${edge};width:6px;border-radius:3px;margin:2px}
+QSplitter#psplit::handle:vertical{background:${edge};height:6px;border-radius:3px;margin:2px}
+QFrame#previewzone{background:${zone};border:1px solid ${edge};border-radius:12px}
+QFrame#termzone{background:${zone};border:1px solid ${edge};border-radius:12px}
+QPlainTextEdit#preview{background:${paper};color:${ink};border:1px solid #a9b6c4;border-radius:6px;
+ padding:2px;font-size:12px}
+QLabel#lnr{background:${drawer};color:#4c5a68;border-right:1px solid #a9b6c4;font-size:11px}
+QLineEdit#pvOpen{background:#ffffff;color:${ink};border:1px solid #a9b6c4;border-radius:6px;padding:4px 7px;font-size:12px}
+QPlainTextEdit#term{background:${crtb};color:${crtf};border:1px solid ${crtdim};border-radius:6px;
+ padding:4px;font-size:12px}
+QLineEdit#termIn{background:${crtb};color:${crtf};border:1px solid ${crtdim};border-radius:6px;
+ padding:5px 7px;font-size:12px;selection-background-color:${crtgl}}
+QLineEdit#termIn:focus{border:1px solid ${crtf}}
 QFrame#drawer{background:${drawer};border:1px solid ${edge};border-radius:12px}
 QTextBrowser#drawerBody{background:rgba(255,255,255,.72);color:${ink};border:1px solid #a9b6c4;
  border-radius:6px;font-size:12px;padding:6px}
@@ -298,12 +331,19 @@ _POSTS = {"/api/stop": "p_stop", "/api/resume": "p_resume", "/api/task/status": 
           "/api/grant": "p_grant", "/api/tts/say": "p_tts_say", "/api/plan/add": "p_plan_add",
           "/api/file/save": "p_file_save", "/api/qq/test": "p_qq_test", "/api/qq/img": "p_qq_img"}
 
-def api(path, body=None):
-    """与网页端逐字相同的 /api/*：GET＝面板 getter（scrub 后返回），POST＝poster（权限门/高危 confirm 继承）。
-    /api/chat 不经此路——GUI 走 shell_core.handle 线程流式（比网页端收集式更快，路由口径一致）。"""
+def api(path, body=None, query=None):
+    """与网页端逐字相同的 /api/*：GET＝面板 getter（scrub 后返回·query＝网页端同名 ?k=v 参数），
+    POST＝poster（权限门/高危 confirm 继承·一字未动）。/api/chat 不经此路——GUI 走 shell_core.handle
+    线程流式（路由口径一致）。批41 预览件要的 /api/file?path=… 与 /api/files?ws=… 即走此 query
+    （进程内直调，绝不新建 HTTP、绝不读 token）。"""
     ws = _ws()
     if ws is None: return {"err": "面板数据件不可用：" + _cache.get("err", "?")}
     p = (path or "").split("?")[0]
+    q = dict(query or {})
+    if "?" in (path or ""):
+        for kv in (path.split("?", 1)[1] or "").split("&"):
+            if "=" in kv:
+                k, v = kv.split("=", 1); q[k] = v
     try:
         if body is None:
             if p == "/api/info":
@@ -312,7 +352,7 @@ def api(path, body=None):
                 return scrub(st)
             fn = getattr(ws, _GETS[p], None) if p in _GETS else None
             if fn is None: return {"err": "GUI 无此面板：" + p}
-            return scrub(fn(dict(body or {})))
+            return scrub(fn(q))
         if p.startswith("/api/plan/"):
             return scrub(ws.p_plan(p.rsplit("/", 1)[-1], dict(body or {})))
         fn = getattr(ws, _POSTS[p], None) if p in _POSTS else None
@@ -399,8 +439,8 @@ def panel_html(name, data):
 # ---------------- 机身构件（Qt 侧对位网页端 chassis/zones/feeder/tray/panel/dial/drawer） ----------------
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
-                             QTextBrowser, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
+                             QPushButton, QSplitter, QTextBrowser, QVBoxLayout, QWidget)
 MONO, UI = "Consolas", "Segoe UI"
 def _f(px, mono=True, bold=False):
     f = QFont(MONO if mono else UI); f.setPixelSize(px); f.setBold(bold); return f
@@ -426,24 +466,50 @@ def key(text, slot=None, style="", small=True, tip=""):
     slot and b.clicked.connect(slot); return b
 
 def build(win, ent):
-    """装机身：返回 {id:widget}（banner/lcd_*/led_*/roll/cmd/drawer/dtitle/dbody/btn_stop/btn_go/
-    blade/blade_tag/blade_pos/eink/einkzone）。
-    ent＝送稿口输入控件（由 shell_qt.Input 提供，Enter/Tab/↑↓ 语义已在其中）。"""
+    """装机身（批41 上送稿口＋下左右分屏）：返回 {id:widget}——批38/39/40 键面逐字保留（roll/mouth/tear/
+    blade/blade_tag/blade_pos/banner/lcd_*/led_*/ctlzone/ctlzone_btn/meta_grp/f1_grp/dial_keys/cmd/drawer/
+    dtitle/dbody/btn_all/btn_speak/btn_stop/btn_go/eink/einkzone/keys），批41 增分屏与两件键：
+    split（QSplitter 主分屏）/psplit（右栏上下分屏）/previewzone·preview·pv_open·pv_fold·pv_stat/
+    termzone·term·term_in·t_run·t_fold·t_paper·t_clear·t_stat。
+    上＝B 送稿口（CRT 输入 ent＋送稿键＋常用拨号·常驻第一位）
+    下＝左右分屏：左纸卷 A（正文＋状态行 LCD 六格/LED 七灯＋mouth/tear/blade＋动作条）
+                右＝预览 D（代码/文件＋行号栏）上、终端 E（内嵌面板）下·两件可切分可折叠
+    按需层＝C 墨水屏三段＋控制面板 ctlzone（META／F1／拨号盘）＋抽屉——一律装配即 hide（Ctrl+I／Ctrl+M）。
+    顶部名牌横条与原生菜单栏仍不装（零顶栏＝命令面板 Ctrl+K＋右键菜单）。
+    预览/终端控件类由壳侧注入（win.PREVIEW_CLS／win.TERM_CLS／win.TERM_IN_CLS），缺类回落 QPlainTextEdit／
+    QLineEdit——装配只此一处，版式真源不落到壳文件。1280×720 可用：三件最小宽 430/300/300，
+    setChildrenCollapsible(False) 防拖没。"""
     w = {}
     central = QWidget(); central.setObjectName("chassis"); win.setCentralWidget(central)
-    root = QVBoxLayout(central); root.setContentsMargins(14, 11, 14, 12); root.setSpacing(9)
-    bar = _row(10)
-    t = QLabel("SMS-FAX · GUI"); t.setObjectName("brand"); t.setFont(_f(17, False, True)); bar.addWidget(t)
-    s = QLabel("LOCAL SHELL LINE · 免密钥"); s.setObjectName("brandSub"); s.setFont(_f(11, False)); bar.addWidget(s)
-    bar.addStretch(1)
-    w["banner"] = QLabel("待机"); w["banner"].setObjectName("banner"); w["banner"].setFont(_f(11, False))
-    bar.addWidget(w["banner"]); root.addLayout(bar)
+    root = QVBoxLayout(central); root.setContentsMargins(10, 8, 10, 8); root.setSpacing(7)
 
-    up = QHBoxLayout(); up.setSpacing(12); root.addLayout(up, 1)
-    tray, tv = _zone("② 出纸口 PAPER TRAY", "接收记录 · 逐行传真扫描")
-    mouth = QFrame(); mouth.setObjectName("mouth"); mouth.setFixedHeight(12); tv.addWidget(mouth)
+    tray, tv = _zone("② 纸卷区 PAPER ROLL · A（左）", "出纸正文 · 状态行 LCD/LED · 裁纸刀 · 分屏右＝预览 D／终端 E")
+    hr = _row(9); tv.addLayout(hr)
+    w["banner"] = QLabel("待机"); w["banner"].setObjectName("banner"); w["banner"].setFont(_f(11, False))
+    hr.addWidget(w["banner"]); hr.addStretch(1)
+    w["ctlzone_btn"] = key("▦ 控制面板 Ctrl+M", lambda: win.fax("ctl"), small=True,
+                           tip="META 键阵／F1 六组／拨号盘＝按需展开（默认收起让位三区）")
+    hr.addWidget(w["ctlzone_btn"])
+    hr.addWidget(key("⌘ 命令面板 Ctrl+K", lambda: win.fax("palette"), small=True, style="acc",
+                     tip="原顶栏菜单全量条目在此过滤唤出（出口同实体键）"))
+    lcd = QFrame(); lcd.setObjectName("lcd"); lg = QGridLayout(lcd)
+    lg.setContentsMargins(9, 5, 9, 5); lg.setHorizontalSpacing(8); lg.setVerticalSpacing(1)
+    for i, k in enumerate(("会话", "模式", "网关", "线路", "任务表", "状态")):
+        a = QLabel(k); a.setObjectName("lcdKey"); a.setFont(_f(11)); r, c = divmod(i, 3)
+        b = QLabel("-"); b.setObjectName("lcdVal"); b.setFont(_f(11, True, True))
+        lg.addWidget(a, r, c * 2); lg.addWidget(b, r, c * 2 + 1)
+        w["lcd_" + k] = b
+    tv.addWidget(lcd)
+    led = QFrame(); led.setObjectName("led"); lr = _row(9); lr.setContentsMargins(8, 5, 8, 5); led.setLayout(lr)
+    for nm in ("线路", "QQ", "朗读", "做梦", "计划", "裁纸", "对外"):
+        lab = QLabel("● " + nm); lab.setObjectName("ledLbl"); lab.setFont(_f(11, False)); lr.addWidget(lab)
+        w["led_" + nm] = lab
+    lr.addStretch(1); tv.addWidget(led)
+    mouth = QFrame(); mouth.setObjectName("mouth"); mouth.setProperty("st", "idle"); mouth.setFixedHeight(12)
+    w["mouth"] = mouth; tv.addWidget(mouth)
     w["roll"] = QTextBrowser(); w["roll"].setObjectName("roll"); w["roll"].setFont(_f(13)); tv.addWidget(w["roll"], 1)
-    tear = QFrame(); tear.setObjectName("tear"); tear.setFixedHeight(10); tv.addWidget(tear)
+    tear = QFrame(); tear.setObjectName("tear"); tear.setProperty("st", "idle"); tear.setFixedHeight(10)
+    w["tear"] = tear; tv.addWidget(tear)
     blade = QFrame(); blade.setObjectName("blade"); blade.setFixedHeight(9)
     blade.setProperty("st", "idle"); w["blade"] = blade; tv.addWidget(blade)
     bt = _row(8); tv.addLayout(bt)
@@ -453,74 +519,118 @@ def build(win, ent):
     w["blade_pos"].setFont(_f(10, False)); bt.addWidget(w["blade_pos"]); bt.addStretch(1)
     br = _row(); tv.addLayout(br)
     for lab, fn in (("⧉ 复制输出", "copyAll"), ("⤓ 下载 .txt", "dl"), ("✂ 撕纸清屏", "tear"),
-                    ("✂ 裁纸 CUT", "cut"), ("▤ 墨水屏 E-INK", "eink")):
-        br.addWidget(key(lab, lambda _f_=fn: win.fax(_f_), tip="网页端同名按钮·本机操作"))
-    h = QLabel("Ctrl+Shift+C＝复制全部"); h.setObjectName("hint"); h.setFont(_f(11, False)); br.addWidget(h)
-    br.addStretch(1)
-    up.addWidget(tray, 3)
+                    ("✂ 裁纸 CUT", "cut"), ("▤ 墨水屏 E-INK", "eink"), ("⌘ 命令面板", "palette")):
+        br.addWidget(key(lab, lambda _f_=fn: win.fax(_f_), tip="网页端同名动作·本机操作"))
+    h = QLabel("右键＝机身菜单 · Ctrl+Shift+C＝复制全部"); h.setObjectName("hint")
+    h.setFont(_f(11, False)); br.addWidget(h); br.addStretch(1)
+    tray.setMinimumWidth(430); w["tray"] = tray   # 批41：纸卷 A 进主分屏左格（不再直挂 root）
 
-    panel, pv = _zone("③ 控制面板 CONTROL", "LCD / 指示灯 / 功能键")
-    lcd = QFrame(); lcd.setObjectName("lcd"); lv = QVBoxLayout(lcd); lv.setContentsMargins(9, 7, 9, 7); lv.setSpacing(1)
-    for k in ("会话", "模式", "网关", "线路", "任务表", "状态"):
-        r = _row(8); a = QLabel(k); a.setObjectName("lcdKey"); a.setFont(_f(12)); a.setMinimumWidth(46); r.addWidget(a)
-        b = QLabel("-"); b.setObjectName("lcdVal"); b.setFont(_f(12, True, True)); r.addWidget(b, 1)
-        w["lcd_" + k] = b; lv.addLayout(r)
-    pv.addWidget(lcd)
-    led = QFrame(); led.setObjectName("led"); lr = _row(9); lr.setContentsMargins(8, 6, 8, 6); led.setLayout(lr)
-    for nm in ("线路", "QQ", "朗读", "做梦", "计划", "裁纸", "对外"):
-        lab = QLabel("● " + nm); lab.setObjectName("ledLbl"); lab.setFont(_f(11, False)); lr.addWidget(lab)
-        w["led_" + nm] = lab
-    lr.addStretch(1); pv.addWidget(led)
+    ctl = QFrame(); ctl.setObjectName("ctlzone"); w["ctlzone"] = ctl
+    cv = QVBoxLayout(ctl); cv.setContentsMargins(11, 9, 11, 9); cv.setSpacing(6)
+    ct = QLabel("控制面板 CONTROL（按需 · Ctrl+M 收起/展开 · 版式真源＝web_page.html）")
+    ct.setObjectName("ztitle"); ct.setFont(_f(11, False, True)); cv.addWidget(ct)
     META_, METAD_, PAD_, QUICK_, F1_ = keys()
     g = QFrame(); g.setObjectName("grp"); gv = QVBoxLayout(g); gv.setContentsMargins(8, 6, 8, 8); gv.setSpacing(4)
-    tt = QLabel("META 元指令 %d 键 · 点击填入送稿口" % len(META_)); tt.setObjectName("zhint"); tt.setFont(_f(10, False))
-    gv.addWidget(tt)
+    tt = QLabel("META 元指令 %d 键 · 点击填入送稿口" % len(META_)); tt.setObjectName("zhint")
+    tt.setFont(_f(10, False)); gv.addWidget(tt)
     grid = QGridLayout(); grid.setHorizontalSpacing(4); grid.setVerticalSpacing(4); gv.addLayout(grid)
     for i, m in enumerate(META_):
         b = key(":" + m, lambda _m=m: win.feed(":" + _m + " "), small=True, tip=":%s — %s" % (m, METAD_.get(m, "")))
         b.setMinimumWidth(0); grid.addWidget(b, i // 8, i % 8)
-    pv.addWidget(g)
+    w["meta_grp"] = g; cv.addWidget(g)
     f1w = QFrame(); f1w.setObjectName("grp"); f1v = QVBoxLayout(f1w); f1v.setContentsMargins(8, 6, 8, 8); f1v.setSpacing(5)
     for grp, items in (F1_ or []):
         r = _row(5); f1v.addLayout(r)
-        lab = QLabel(grp); lab.setObjectName("zhint"); lab.setFont(_f(10, False)); lab.setMinimumWidth(96); r.addWidget(lab)
+        lab = QLabel(grp); lab.setObjectName("zhint"); lab.setFont(_f(10, False)); lab.setMinimumWidth(96)
+        r.addWidget(lab)
         for cmd, name in items:
             r.addWidget(key(name, lambda _c=cmd: win.faxPick(_c), small=True, tip=str(cmd).strip()))
-    pv.addWidget(f1w); pv.addStretch(1)
-    up.addWidget(panel, 2)
-
-    feeder, zv = _zone("① 进纸器 DOC FEEDER", "话语 / :元指令 · Tab 补全 · ↑↓ 取历史")
-    fr = _row(8); fr.addWidget(ent, 1)
-    fr.addWidget(key("送稿 FEED", win.feedNow, style="acc", small=False)); zv.addLayout(fr)
-    qh = _row(5); zv.addLayout(qh)
-    ql = QLabel("常用拨号"); ql.setObjectName("quickLbl"); qh.addWidget(ql)
-    for lab, c in QUICK_: qh.addWidget(key(lab, lambda _c=c: win.feed(_c), small=True, tip=str(c).strip()))
-    qh.addStretch(1); feeder.setMinimumHeight(132); root.addWidget(feeder)
-
-    dial = QFrame(); dial.setObjectName("dial"); dv = _row(12); dv.setContentsMargins(12, 8, 12, 8); dial.setLayout(dv)
+    w["f1_grp"] = f1w; cv.addWidget(f1w)
+    dv = _row(12); cv.addLayout(dv)
     pg = QGridLayout(); pg.setHorizontalSpacing(6); pg.setVerticalSpacing(6); dv.addLayout(pg)
+    w["dial_keys"] = []
     for i, (k, c, lab) in enumerate(PAD_):
         b = QPushButton("%s  %s" % (k, lab)); b.setObjectName("k"); b.setFont(_f(12, False, True))
-        b.setMinimumSize(56, 34); b.setToolTip(c); b.clicked.connect(lambda _c=c: win.feed(_c))
-        pg.addWidget(b, i // 4, i % 4)
-    note = QLabel("拨号盘＝快捷指令位（0 agent · * 菜单 · # 模式）"); note.setObjectName("dialNote"); note.setFont(_f(11, False))
-    note.setWordWrap(True); note.setMaximumWidth(180); dv.addWidget(note)
+        b.setMinimumSize(56, 30); b.setToolTip(c); b.clicked.connect(lambda _c=c: win.feed(_c))
+        pg.addWidget(b, i // 4, i % 4); w["dial_keys"].append(b)
+    note = QLabel("拨号盘＝快捷指令位（0 agent · * 菜单 · # 模式）"); note.setObjectName("dialNote")
+    note.setFont(_f(11, False)); note.setWordWrap(True); note.setMaximumWidth(170); dv.addWidget(note)
     dv.addStretch(1)
     w["btn_all"] = key("↻ 巡检 ALL", lambda: win.fax("pollAll"), small=True); dv.addWidget(w["btn_all"])
     w["btn_speak"] = key("🔊 朗读末条", lambda: win.fax("speakLast"), small=True); dv.addWidget(w["btn_speak"])
     w["btn_stop"] = key("⏸ 停止", lambda: win.fax("doStop"), style="stop", small=False); dv.addWidget(w["btn_stop"])
     w["btn_go"] = key("▶ 继续", lambda: win.fax("doResume"), style="go", small=False); dv.addWidget(w["btn_go"])
-    w["btn_stop"].hide(); w["btn_go"].hide(); root.addWidget(dial)
+    w["btn_stop"].hide(); w["btn_go"].hide(); ctl.hide()   # 批41：ctlzone 装配即 hide·排位在分屏之后
+
+    feeder, zv = _zone("① 送稿口 DOC FEEDER · B（上·常驻第一位）", "话语 / :元指令 · Tab 补全 · ↑↓ 历史 · CRT 成像 · 送稿键 · 常用拨号")
+    fr = _row(8); fr.addWidget(ent, 1)
+    fr.addWidget(key("送稿 FEED", win.feedNow, style="acc", small=False)); zv.addLayout(fr)
+    qh = _row(5); zv.addLayout(qh)
+    ql = QLabel("常用拨号"); ql.setObjectName("quickLbl"); qh.addWidget(ql)
+    for lab, c in QUICK_: qh.addWidget(key(lab, lambda _c=c: win.feed(_c), small=True, tip=str(c).strip()))
+    qh.addStretch(1); feeder.setMinimumHeight(96); root.addWidget(feeder)   # 批41：B 送稿口常驻第一位
+    w["feeder"] = feeder
+
+    # ---------------- 批41 右栏：预览 D（代码/文件＋行号栏）· 终端 E（内嵌面板）----------------
+    # 控件类由壳侧注入（win.PREVIEW_CLS／win.TERM_CLS／win.TERM_IN_CLS），缺类回落基件＝装配只此一处；
+    # 进程/取数一律在壳侧件内（本装配体不碰子进程面·门禁 assembly_no_process_face 扫此段）。
+    pvz, pvv = _zone("③ 预览 PREVIEW · D（右上）", "代码/文件＋行号栏 · 数据一律进程内取数 /api/files · /api/file · /api/detail（无 HTTP·无 token）")
+    pv_in = QLineEdit(); pv_in.setObjectName("pvOpen")
+    pv_in.setPlaceholderText("路径 / 文件名 → Enter＝进程内取文预览（绝不新建 HTTP·绝不读 token）")
+    pvv.addWidget(pv_in)
+    pv = (getattr(win, "PREVIEW_CLS", None) or QPlainTextEdit)(win)
+    pv.setObjectName("preview"); pv.setReadOnly(True); pv.setFont(_f(12)); pv.setMinimumWidth(300)
+    pvv.addWidget(pv, 1)
+    pv_stat = QLabel("预览未取数（缺省＝/api/detail 长输出留档）"); pv_stat.setObjectName("hint")
+    pv_stat.setFont(_f(10, False)); pvv.addWidget(pv_stat)
+    pr1 = _row(8); pvv.addLayout(pr1)
+    w["pv_fold"] = key("▣ 折叠预览", lambda: win.fax("pvFold"), small=True,
+                       tip="右栏上下折叠：预览收起＝终端满幅（Ctrl+D 开合）")
+    w["pv_src"] = key("↺ 重载当前源", lambda: win.fax("pvReload"), small=True,
+                      tip="重走同一条 fax.api 取数路（不新建第二条路由）")
+    pr1.addWidget(w["pv_fold"]); pr1.addWidget(w["pv_src"]); pr1.addStretch(1)
+    w["previewzone"] = pvz; w["preview"] = pv; w["pv_open"] = pv_in; w["pv_stat"] = pv_stat
+
+    tmz, tmv = _zone("④ 终端 TERMINAL · E（右下）", "内嵌终端面板（无控制台窗口·随窗口收净）· `!` 与内置命令同 TUI · 路由仍 shell_core.handle")
+    tm = (getattr(win, "TERM_CLS", None) or QPlainTextEdit)(win)
+    tm.setObjectName("term"); tm.setReadOnly(True); tm.setFont(_f(12)); tm.setMinimumWidth(300)
+    tmv.addWidget(tm, 1)
+    pr2 = _row(6)
+    ti = (getattr(win, "TERM_IN_CLS", None) or QLineEdit)(tmz)
+    ti.setObjectName("termIn")
+    ti.setPlaceholderText("$ 系统 shell 命令 · :元指令 / 话语＝同 TUI 路由（core.handle）· Enter 执行 · ↑↓ 历史")
+    pr2.addWidget(ti, 1)
+    w["t_run"] = key("▶ 执行", lambda: win.fax("termRun"), small=True, tip="回车同义：按路由口径执行一行")
+    w["t_fold"] = key("▣ 折叠终端", lambda: win.fax("termFold"), small=True, tip="右栏上下折叠：终端收起＝预览满幅")
+    w["t_paper"] = key("↥ 上纸卷", lambda: win.fax("termPaper"), small=True, tip="终端缓冲回灌纸卷 A（输出上纸面）")
+    w["t_clear"] = key("✕ 清空", lambda: win.fax("termClear"), small=True, tip="清空终端缓冲（不动在跑进程）")
+    for b in (w["t_run"], w["t_fold"], w["t_paper"], w["t_clear"]): pr2.addWidget(b)
+    tmv.addLayout(pr2)
+    t_stat = QLabel("终端待机（无在跑进程）"); t_stat.setObjectName("hint"); t_stat.setFont(_f(10, False))
+    tmv.addWidget(t_stat)
+    tmz.setMinimumWidth(300); w["termzone"] = tmz; w["term"] = tm; w["term_in"] = ti; w["t_stat"] = t_stat
+
+    psplit = QSplitter(Qt.Orientation.Vertical); psplit.setObjectName("psplit")
+    psplit.addWidget(pvz); psplit.addWidget(tmz)
+    psplit.setChildrenCollapsible(False); psplit.setSizes([420, 280])
+    split = QSplitter(Qt.Orientation.Horizontal); split.setObjectName("split")
+    split.addWidget(tray); split.addWidget(psplit)
+    split.setChildrenCollapsible(False); split.setStretchFactor(0, 3); split.setStretchFactor(1, 2)
+    split.setSizes([760, 640])          # 1280×720：左≥430·右≥300×2 可用
+    w["split"] = split; w["psplit"] = psplit
+    root.addWidget(split, 1)
+    root.addWidget(ctl)                  # 按需展开时排在分屏下方（默认 hide）
 
     ez = QFrame(); ez.setObjectName("einkzone"); w["einkzone"] = ez
-    zv2 = QVBoxLayout(ez); zv2.setContentsMargins(12, 8, 12, 10); zv2.setSpacing(4)
-    et = QLabel("⑥ 墨水屏消息面板 E-INK · 只三段（会话信息／任务表／后台任务）· 无动效")
+    zv2 = QVBoxLayout(ez); zv2.setContentsMargins(12, 6, 12, 8); zv2.setSpacing(4)
+    et = QLabel("③ 墨水屏 E-INK · C（只三段：会话信息／任务表／后台任务 · 无动效 · Ctrl+I 展开）")
     et.setObjectName("ztitle"); et.setFont(_f(11, False, True)); zv2.addWidget(et)
     w["eink"] = QTextBrowser(); w["eink"].setObjectName("eink"); w["eink"].setFont(_f(12, False))
     w["eink"].setMinimumHeight(118); zv2.addWidget(w["eink"])
     ez.hide(); root.addWidget(ez)
 
-    dr = QFrame(); dr.setObjectName("drawer"); w["drawer"] = dr; dvl = QVBoxLayout(dr); dvl.setContentsMargins(12, 9, 12, 11); dvl.setSpacing(6)
+    dr = QFrame(); dr.setObjectName("drawer"); w["drawer"] = dr; dvl = QVBoxLayout(dr)
+    dvl.setContentsMargins(12, 9, 12, 11); dvl.setSpacing(6)
     dh = _row(8); dh.addStretch(1)
     dh.addWidget(key("✕ 合上", lambda: win.fax("closeDrawer"), small=True))
     w["dtitle"] = QLabel("面板"); w["dtitle"].setObjectName("ztitle"); w["dtitle"].setFont(_f(12, False, True))
@@ -530,6 +640,41 @@ def build(win, ent):
     dr.hide(); root.addWidget(dr)
     w["keys"] = (META_, METAD_, PAD_, QUICK_, F1_)
     return w
+
+
+# ---------------- 批41 预览件 D／终端件 E 的纯算式（真源单一：算式在此，壳只接绘制与状态） ----------------
+FALLBACK_TEXT = ("（内置兜底预览·页面/面板取不到时的离仓样本）\n"
+                 "  # sms-shell fax console mirror\n"
+                 "  # 取数路径：/api/files → /api/file → /api/detail（进程内直调·无 HTTP·无 token）\n"
+                 "  # 自检：python -B shell_qt.py --selftest（offscreen）\n")
+
+def preview_text(data, name=""):
+    """预览件取数收口（纯函数）：web_shell getter 返回 dict → 可预览文本＋行数＋是否兜底。
+    取不到＝内置兜底（FALLBACK_TEXT），err 原样带回由壳侧在纸面打「卡纸」——不新建 HTTP、不读密钥。"""
+    d = data if isinstance(data, dict) else {}
+    err = str(d.get("err") or "")
+    t = str(d.get("content") or d.get("text") or "")
+    if not t.strip():
+        files = d.get("files") or d.get("items") or []
+        t = "\n".join("%-4s %10s  %s" % (x.get("type") or "file", x.get("size") or "-",
+                                          x.get("path") or x.get("name") or "-")
+                      for x in files[:400] if isinstance(x, dict))
+    fb = not t.strip()
+    if fb: t = FALLBACK_TEXT
+    return {"text": t, "err": err, "name": str(name or d.get("path") or ""),
+            "lines": t.count("\n") + 1, "fallback": fb}
+
+TERM_PROMPT = "$ "
+
+def term_line_kind(text):
+    """终端缓冲行分类（纯算式）：命令回显＝sh、: 元指令＝meta、rc≠0/JAM/✗/Traceback＝err、其余＝out。"""
+    t = str(text or "").strip()
+    if not t: return "out"
+    if t.startswith("$") or t.startswith("!"): return "sh"
+    if t.startswith(":") or t.startswith("："): return "meta"
+    if ("JAM" in t or t.startswith("✗") or t.startswith("⛔") or "Traceback" in t
+            or re.search(r"\brc=[1-9]\d*\b", t)): return "err"
+    return "out"
 
 # ---------------- t6 裁纸刀（出纸末端·状态推进＋刀条视觉：QTimer 进程内走步·零新端口零新进程） ----------------
 CUT_STEPS = (("idle", "裁纸待机 TRIM IDLE", ""),
@@ -589,6 +734,19 @@ def crt_block_cursor(px):
 
 # ---------------- t10 墨水屏消息面板（E-INK：只此三段·低饱和灰白·无动效·仿电子墨水印） ----------------
 EINK_SECTIONS = ("会话信息", "任务表", "后台任务")
+# 视图轮转真源（批41 五态·shell_qt.viewToggle 只按此排布，判据不留两份口径）
+VIEW_NAMES = ("纸卷 A", "送稿 B", "墨水屏 C", "预览 D", "终端 E")
+
+def view_next(i):
+    """轮转步进（纯算式）：越界/非法一律回 0（纸卷 A），闭环＝len(VIEW_NAMES) 态。"""
+    try: k = int(i)
+    except Exception: return 0
+    return 0 if k < 0 else (k + 1) % len(VIEW_NAMES)
+
+def view_name(i):
+    try: k = int(i) % len(VIEW_NAMES)
+    except Exception: k = 0
+    return VIEW_NAMES[k]
 
 def _eink_box(title, inner):
     return ('<div style="border:1px solid #b9bfba;border-radius:2px;background:#eef0ee;'
@@ -674,14 +832,80 @@ def selftest():
                        and not any(bad in e for bad in ("animation", "transition", "gradient", "@keyframes")))
     ok["eink_empty"] = eink_html().count("（无）") >= 1
     ok["eink_no_key"] = leaked(eink_html(info)) == "" if isinstance(info, dict) else True
+    nb = "SMS-" + "FAX · GUI"          # 拆字面量：判据自身不得含被检串（否则自指假阴）
+    bs = "brand" + "Sub"
+    ok["qss_topbar"] = ("QFrame#ctlzone{" in q and "QListWidget#palList{" in q
+                        and "QDialog#palette{" in q and ("QLabel#" + "brand{") not in q
+                        and bs not in q and 'QFrame#mouth[st="feed"]' in q)
+    bsrc = read_text(os.path.join(S, "shell_qt_fax.py"))
+    ok["build_zero_topbar"] = (nb not in bsrc and 'w["ctlzone"]' in bsrc
+                               and 'w["ctlzone_btn"]' in bsrc and 'w["banner"]' in bsrc
+                               and 'w["mouth"]' in bsrc and bs not in bsrc)
+    # ---- 批41 上送稿口＋下左右分屏（表 010-231707-890）：分屏／预览／终端进门禁 ----
+    seg = bsrc.split("def build(win, ent):")[1].split("# ---------------- t6 裁纸刀")[0]
+    seg_code = seg.split('"""', 2)[-1]          # 判据只扫装配代码体（docstring 里的说明字样不算进程面）
+    ok["view_cycle5"] = (list(VIEW_NAMES) == ["纸卷 A", "送稿 B", "墨水屏 C", "预览 D", "终端 E"]
+                         and [view_next(i) for i in range(len(VIEW_NAMES))] == [1, 2, 3, 4, 0]
+                         and view_next("x") == 0 and view_next(-2) == 0
+                         and view_name(3) == "预览 D" and view_name(7) == "墨水屏 C")
+    ok["qss_split"] = ("QSplitter#split" in q and "QSplitter#psplit" in q
+                       and "QSplitter#split::handle:horizontal" in q
+                       and "QSplitter#psplit::handle:vertical" in q)
+    ok["qss_preview"] = ("QPlainTextEdit#preview{" in q and "QLabel#lnr{" in q
+                         and "QFrame#previewzone{" in q and "QLineEdit#pvOpen{" in q)
+    ok["qss_terminal"] = ("QPlainTextEdit#term{" in q and "QLineEdit#termIn{" in q
+                          and "QFrame#termzone{" in q)
+    ok["build_split_assembly"] = ('w["split"] = split' in seg_code and 'w["psplit"] = psplit' in seg_code
+                                  and "split.addWidget(tray)" in seg_code and "split.addWidget(psplit)" in seg_code
+                                  and "psplit.addWidget(pvz)" in seg_code and "psplit.addWidget(tmz)" in seg_code
+                                  and "setChildrenCollapsible(False)" in seg_code
+                                  and "split.setSizes([760, 640])" in seg_code
+                                  and "root.addWidget(split, 1)" in seg_code)
+    ok["build_preview_parts"] = ('w["preview"] = pv' in seg_code and 'w["previewzone"] = pvz' in seg_code
+                                 and 'w["pv_open"] = pv_in' in seg_code and 'w["pv_stat"] = pv_stat' in seg_code
+                                 and 'w["pv_fold"]' in seg_code and 'w["pv_src"]' in seg_code)
+    ok["build_terminal_parts"] = ('w["term"] = tm' in seg_code and 'w["termzone"] = tmz' in seg_code
+                                  and 'w["term_in"] = ti' in seg_code and 'w["t_run"]' in seg_code
+                                  and 'w["t_fold"]' in seg_code and 'w["t_paper"]' in seg_code
+                                  and 'w["t_clear"]' in seg_code and 'w["t_stat"]' in seg_code)
+    ok["build_feeder_first"] = ('"① 送稿口 DOC FEEDER · B' in seg and '"② 纸卷区 PAPER ROLL · A' in seg
+                                and '"③ 预览 PREVIEW · D' in seg and '"④ 终端 TERMINAL · E' in seg
+                                and seg_code.index("root.addWidget(feeder)") < seg_code.index("root.addWidget(split, 1)")
+                                and "root.addWidget(tray, 3)" not in seg_code
+                                and "ctl.hide()" in seg_code and "ez.hide()" in seg_code and "dr.hide()" in seg_code)
+    pf = ("sub" + "process", "Q" + "Process", "soc" + "ket", "HTTP" + "Server",
+          "serve_" + "forever", "os." + "system")   # 拆字面量：判据自身不得含被检串（否则镜像件恒假阴·本批补踩）
+    ok["assembly_no_process_face"] = (not any(x in seg_code for x in pf)
+                                      and "/api/files" in seg_code and "/api/detail" in seg_code)
+    ok["api_query_get"] = ("query" in inspect.signature(api).parameters
+                           and isinstance(api("/api/files", query={}), dict)
+                           and bool(api("/api/file", query={"path": "no/such/x"}).get("err")))
+    ok["preview_helpers"] = (preview_text({"content": "x\ny"})["lines"] == 2
+                             and preview_text({"err": "没门"})["fallback"]
+                             and preview_text({"files": [{"name": "a.py", "size": 3,
+                                                           "type": "file"}]})["lines"] == 1
+                             and "sms-shell" in preview_text({})["text"]
+                             and preview_text(None)["fallback"] is True)
+    ok["term_helpers"] = (term_line_kind("$ dir") == "sh" and term_line_kind(":cmds") == "meta"
+                          and term_line_kind("JAM 卡纸") == "err" and term_line_kind("rc=1") == "err"
+                          and term_line_kind("Traceback x") == "err" and term_line_kind("hello") == "out"
+                          and term_line_kind("") == "out" and TERM_PROMPT == "$ ")
+    ok["fw_batch41_keys"] = all(('w["%s"]' % k) in seg_code for k in
+                                ("split", "psplit", "preview", "previewzone", "pv_open", "pv_stat",
+                                 "term", "termzone", "term_in", "t_stat"))
     print("FAX_SELFTEST " + json.dumps(ok, ensure_ascii=False))
     return 0 if (ok["meta"] >= 30 and ok["qss_gradient"] and ok["qss_shapes"] and ok["line_html"]
                  and ok["jam"] and ok["no_token_face"] and ok["page_bytes"] > 1000
                  and ok["cut_cycle"] and ok["cut_progress"] and ok["cut_tone"] and ok["cut_mark"]
                  and ok["crt_colors"] and ok["crt_scanlines"] and ok["crt_afterglow"] and ok["crt_cursor"]
                  and ok["qss_crt"] and ok["qss_blade"] and ok["qss_eink"]
-                 and ok["eink_sections"] and ok["eink_html"] and ok["eink_empty"]) else 1
-
+                 and ok["eink_sections"] and ok["eink_html"] and ok["eink_empty"]
+                 and ok["qss_topbar"] and ok["build_zero_topbar"]
+                 and ok["view_cycle5"] and ok["qss_split"] and ok["qss_preview"] and ok["qss_terminal"]
+                 and ok["build_split_assembly"] and ok["build_preview_parts"]
+                 and ok["build_terminal_parts"] and ok["build_feeder_first"]
+                 and ok["assembly_no_process_face"] and ok["fw_batch41_keys"]
+                 and ok["preview_helpers"] and ok["term_helpers"] and ok["api_query_get"]) else 1
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

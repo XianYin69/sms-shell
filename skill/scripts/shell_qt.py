@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """shell_qt.py — sms-shell 图形壳（PyQt6）＝网页端传真机界面的本机镜像（批38 重写）：
-机身 chassis → ① 进纸器 DOC FEEDER（话语/:元指令·Tab 补全·↑↓ 历史·常用拨号）② 出纸口 PAPER TRAY（逐行传真·
-米纸卷＋撕纸线·复制/下载/撕纸清屏）③ 控制面板 CONTROL（LCD 六行＋六盏指示灯＋META 元指令键阵＋F1 六组）
-④ 拨号盘＋走纸控制（↻巡检/🔊朗读/⏸停止/▶继续）⑤ 抽屉面板（任务表/计划/链/会话/技能/文件/配置/权限/明细）。
+批40 起机身 chassis＝零顶栏三区（常驻）→ A 纸卷区 PAPER ROLL（出纸正文＋状态行 LCD 六格/LED 七灯＋mouth 口腔·
+tear 撕纸线·blade 裁纸刀＋复制/下载/撕纸/裁纸/墨水屏/命令面板动作条）B 送稿口 DOC FEEDER（话语/:元指令·Tab 补全·
+↑↓ 历史·常用拨号·CRT 成像）C 墨水屏 E-INK（只三段·Ctrl+I 展开）；按需层＝控制面板（META 键阵＋F1 六组＋拨号盘＋
+↻巡检/🔊朗读/⏸停止/▶继续·Ctrl+M）与抽屉面板（任务表/计划/链/会话/技能/文件/配置/权限/明细）。
 批39 三视图件（算式与版式真源全在 shell_qt_fax.py，本文件只接绘制与状态推进·零新端口零新进程零子线程）：
 t6 出纸末端裁纸刀（✂ 裁纸 CUT：fax.cut_next 五态推进·进程内 QTimer 每 200ms 走一步·刀条 QFrame#blade[st=…]
 随态换渐变＋行程百分比＋裁纸指示灯·落 drop 在纸面留裁断印记·途中再点＝中止）；t8 送稿口 CRT（绿字 #33ff66
@@ -18,6 +19,11 @@ JS META·METAD·PAD·QUICK·F1→机身件），页面取不到时用内置兜�
 并行、停止、提问、明细、任务表、HUD、编辑器与旧壳同口径（Task worker·stop_channel/ask_channel/chains.ACTIVE
 线程隔离·shell.parallel=false 或达 shell.max_parallel 排队续发·stop <tid> 只停一个·ask_user 下一条输入即答复）。
 零裸子进程：唯一有意开窗处（`tui` 另起终端壳）带 `# sms-visible` 标记，其余一律 no_window。
+批40 零顶栏三区骨架：机身不装原生菜单栏、不装 brand 横条——常驻只 A 纸卷区（出纸正文＋状态行 LCD 六格/LED 七灯
+＋裁纸刀）、B 送稿口（CRT 成像·键盘口径不变）、C 墨水屏（只三段·Ctrl+I）；控制面板（META 键阵·F1 六组·拨号盘）
+与抽屉＝按需展开（Ctrl+M）。菜单职能＝命令面板 Ctrl+K（条目同源 MENU_ITEMS·出口同实体键 feed/faxPick/_open/submit）
+＋右键菜单；原菜单快捷键 F3/F5/F8/Ctrl+T/P/J/H/E/I/R/M/V/K 一律保 QAction 级（_menu_actions·不挂 menuBar）。
+fw 键面逐字兼容批38/39（banner/roll/drawer/dtitle/dbody/lcd_*/led_*/blade*/eink*/btn_*/keys 全保留）。
 跑法：bin/sms-shell-gui（图形入口·批37 双入口）或 python -B shell_qt.py · 自检：python -B shell_qt.py --selftest
 （offscreen 成图＋机身件计数＋抽屉面板渲染，不发模型请求）；端到端回归：--probe=:help||:cmds（输出落 txt）。"""
 import os, sys, time, html, re, json, io, contextlib, subprocess
@@ -76,10 +82,11 @@ try:
 except ImportError as e:                        # 缺件＝覆盖安装不完整，明确交棒终端入口而非半瞎窗口
     sys.exit("图形壳缺镜像件 shell_qt_fax.py（%s）——跑 deploy.py 或 install_overlay.py --write 补全，"
              "或用 bin/sms-shell-tui 终端入口" % e)
-from PyQt6.QtCore import Qt, QRect, QThread, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QColor, QFont, QKeySequence, QPainter
-from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
-                             QPushButton, QTextBrowser, QVBoxLayout, QWidget)
+from PyQt6.QtCore import Qt, QRect, QSize, QThread, QTimer, QProcess, pyqtSignal
+from PyQt6.QtGui import (QAction, QColor, QFont, QKeySequence, QPainter, QTextFormat)
+from PyQt6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                             QListWidgetItem, QMainWindow, QMenu, QPlainTextEdit, QPushButton,
+                             QTextBrowser, QTextEdit, QVBoxLayout, QWidget)
 SMS = core.SMS; TD = os.path.join(SMS, "tasks")
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 PAPE = dict(bg="#f7f3e7", ink="#1b2026", dim="#6b6152", blue="#2b4a63", green="#1d6b41", yellow="#8a6a2a",
@@ -176,6 +183,120 @@ class Editor(QMainWindow):
         except Exception as e: self.stat.setText("✗ 重载失败：" + str(e)[:160])
 
 
+class LineNumberArea(QWidget):
+    """预览件行号栏（批41·独立自绘）：宽度＝位数×字宽＋边距；绘制一律走 Preview.lnr_rows()
+    的块几何（document().documentLayout()），不自存行号数组、不改文本模型。"""
+    def __init__(self, ed):
+        super().__init__(ed); self.ed = ed
+    def sizeHint(self):
+        fm = self.ed.fontMetrics()
+        return QSize(max(34, 9 + fm.horizontalAdvance("9" * max(2, len(str(self.ed.blockCount()))))), 0)
+    def paintEvent(self, ev): self.ed.lnr_paint(ev)
+
+
+class Preview(QPlainTextEdit):
+    """预览件 D（批41）：代码/文件只读预览＋行号栏＋当前行整行高亮。数据只由 Shell.previewOpen 经
+    进程内 fax.api()（/api/files·/api/file·/api/detail）灌入——绝不新建 HTTP、绝不读 token；
+    折行关闭＝行号与源行一一对应。取不到＝preview_text 内置兜底＋纸面「卡纸」（不静默）。"""
+    def __init__(self, win=None):
+        super().__init__(); self.win = win
+        self.lnr = LineNumberArea(self)
+        self.blockCountChanged.connect(self.lnr_resize)
+        self.updateRequest.connect(self.lnr_update)
+        self.cursorPositionChanged.connect(self.lnr_highlight)
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.setReadOnly(True); self.setObjectName("preview")
+        f = QFont("Cascadia Mono"); f.setStyleHint(QFont.StyleHint.Monospace); self.setFont(f)
+        self.lnr_resize(0); self.lnr_highlight()
+
+    def lnr_width(self): return int(self.lnr.sizeHint().width())
+    def lnr_resize(self, _h=0):
+        self.setViewportMargins(self.lnr_width(), 0, 0, 0)
+        self.lnr.setGeometry(0, 0, self.lnr_width(), self.height() or 0)
+    def lnr_update(self, r, dy):
+        if dy: self.lnr_resize(0)
+        else: self.lnr.update(0, r.y(), self.lnr_width(), r.height())
+    def lnr_rows(self, limit=4000):
+        """可见块 → [(行号, y)]：几何取 document().documentLayout().blockBoundingRect（Qt 官方口径），
+        字体/DPI 变了也不用改判据；自检与 paintEvent 共用此算式（同一份真源）。"""
+        out = []
+        with contextlib.suppress(Exception):
+            dl = self.document().documentLayout(); fm = self.fontMetrics()
+            vh = self.viewport().height(); b = self.firstVisibleBlock()
+            if not b.isValid(): return out
+            top = int(dl.blockBoundingRect(b).top()) - int(self.contentOffset().y())
+            bottom = vh + 40
+            while b.isValid() and len(out) < limit:
+                if b.isVisible() and top + int(dl.blockBoundingRect(b).height()) > -fm.height():
+                    if top <= bottom: out.append((int(b.blockNumber()) + 1, top))
+                    else: break
+                b = b.next()
+                if not b.isValid(): break
+                top = int(dl.blockBoundingRect(b).top()) - int(self.contentOffset().y())
+        return out
+    def lnr_paint(self, ev):
+        try:
+            p = QPainter(self.lnr); fm = self.fontMetrics()
+            p.fillRect(ev.rect(), QColor("#eef3f8")); p.setPen(QColor("#4c5a68"))
+            for num, y in self.lnr_rows():
+                if y + fm.ascent() > 0: p.drawText(4, y + fm.ascent(), str(num))
+            p.end()
+        except Exception: pass               # 行号失败绝不影响预览正文
+    def lnr_highlight(self):
+        with contextlib.suppress(Exception):
+            sel = QTextEdit.ExtraSelection(); sel.format.setBackground(QColor("#dfeaf5"))
+            sel.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+            sel.cursor = self.textCursor(); sel.cursor.clearSelection()
+            self.setExtraSelections([sel])
+    def line_count(self):
+        return int(self.blockCount())
+
+
+class Terminal(QPlainTextEdit):
+    """终端件 E（批41）：面板只管成像与缓冲——进程由 Shell._termSpawn 起（QProcess·无控制台窗口·
+    随窗口 closeEvent 收净）。上色按 fax.term_line_kind（纯算式真源在镜像件）。"""
+    def __init__(self, win=None):
+        super().__init__(); self.win = win
+        self.setObjectName("term"); self.setReadOnly(True)
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        f = QFont("Cascadia Mono"); f.setStyleHint(QFont.StyleHint.Monospace); self.setFont(f)
+        self.lines = []                       # [(kind, text)]
+    def put(self, kind, text):
+        """一行进缓冲＋成像（kind 缺省＝按 fax.term_line_kind 判色）；多行文本逐行入缓冲。"""
+        t = str(text or "")
+        for one in (t.split("\n") if t else [""]):
+            k = kind or fax.term_line_kind(one)
+            self.lines.append((k, one))
+            c = self.textCursor(); c.movePosition(c.MoveOperation.End)
+            fmt = QTextCharFormat(); fmt.setForeground(QColor(TERM_INK.get(k, "#cfe6d8")))
+            c.insertText(one + "\n", fmt)
+        self.lines = self.lines[-4000:]
+        sb = self.verticalScrollBar(); sb.setValue(sb.maximum())
+        return kind or fax.term_line_kind(t.split("\n")[0])
+    def tail(self, n=200):
+        return "\n".join(t for _k, t in self.lines[-int(n or 200):])
+    def wipe(self):
+        self.clear(); self.lines = []
+
+TERM_INK = {"sh": "#33ff66", "out": "#9fd8c0", "meta": "#54d9ff", "err": "#ff5252",
+            "sys": "#ffb02e"}          # 终端面板用色（CRT 同族·由 fax 配色补值）
+
+
+class TermIn(QLineEdit):
+    """终端输入行（批41）：`!xxx`＝系统 shell（QProcess 起 sys_shells 本体＝`!` 真源，权限门继承）；
+    `:元指令`／裸内置词／话语＝一律交 Shell.submit → shell_core.handle（同 TUI·唯一路由口·不新建第二条）。
+    Enter 执行 · ↑↓ 终端历史。"""
+    def __init__(self, win):
+        super().__init__(win); self.win = win
+        self.setObjectName("termIn")
+        f = QFont("Cascadia Mono"); f.setStyleHint(QFont.StyleHint.Monospace); self.setFont(f)
+    def keyPressEvent(self, ev):
+        k = ev.key()
+        if k in (Qt.Key.Key_Return, Qt.Key.Key_Enter): self.win.termRun(); return
+        if k in (Qt.Key.Key_Up, Qt.Key.Key_Down): self.win.termHist(k == Qt.Key.Key_Up); return
+        super().keyPressEvent(ev)
+
+
 class Input(QPlainTextEdit):
     """底部输入（t8 CRT 送稿口）：Enter 提交 · Ctrl+Enter 换行 · ↑↓ 历史 · Tab 元指令补全——
     keyPressEvent 与路由/stop/ask 口径一字未改；CRT 只是叠加成像：绿字黑底（#33ff66 系·QSS cmd[crt="1"]）
@@ -257,7 +378,10 @@ class Input(QPlainTextEdit):
 
 
 class Shell(QMainWindow):
-    """传真机机身容器：机身五区由 shell_qt_fax.build() 装配，路由/并行/停止/提问/明细一律沿用旧壳引擎件。"""
+    """传真机机身容器（批40 零顶栏三区骨架）：装配由 shell_qt_fax.build() 产出——常驻只 A 纸卷区／B 送稿口／
+    C 墨水屏，控制面板（META 键阵·F1 六组·拨号盘）与抽屉按需展开（Ctrl+M）；顶部原生菜单栏与名牌横条一律不装，
+    菜单职能＝命令面板 Ctrl+K＋右键菜单（条目同源 MENU_ITEMS·快捷键保 QAction 级）；
+    路由/并行/停止/提问/明细一律沿用旧壳引擎件。"""
     def __init__(self):
         super().__init__()
         self.setWindowTitle("sms-shell · 传真机图形壳（免密钥·默认 smsystem-suit 数据流）")
@@ -272,7 +396,7 @@ class Shell(QMainWindow):
             import session_reg as sr; SELF = sr.bind("client", os.getpid(), "Qt壳")
             os.environ.setdefault("SMS_SESSION", SELF)
         except Exception: pass
-        self._ui(); self._menu(); self._timers()
+        self._ui(); self._timers()      # 批40 零顶栏：不挂 menuBar（菜单＝命令面板 Ctrl+K＋右键菜单）
         self._side_i = 0
         self.echo(core.banner())
         with contextlib.suppress(Exception):
@@ -281,16 +405,18 @@ class Shell(QMainWindow):
             import ask_channel; ask_channel.arm()
         self.fax("pollAll")
 
-    # ---------- 装配 ----------
+    # ---------- 装配（批40 零顶栏：无 menuBar·无 brand 横条·三区常驻＋按需层） ----------
     def _ui(self):
         self.ent = Input(self)
-        self.fw = fax.build(self, self.ent)              # 机身五区（版式真源＝网页端）
+        self.fw = fax.build(self, self.ent)              # 三区骨架（版式真源＝网页端·零顶栏装配）
         self.setStyleSheet(fax.qss())
         self.out = self.fw["roll"]; self.drawer = self.fw["drawer"]
         self.stat = QLabel(""); self.stat.setObjectName("statusbar")
         c = self.centralWidget(); c.layout().addWidget(self.stat)
-        self.stat.setText("● 就绪 · Enter 送稿 · Tab 补全 · F3 速查 · F8 编辑器 · F12 停止 · "
-                          "CRT 送稿口（绿字黑底·扫描线·余辉·块光标）· ✂ 裁纸 · ▤ 墨水屏 · 免密钥（本机窗口）")
+        self.stat.setText("● 就绪 · Enter 送稿 · Tab 补全 · Ctrl+K 命令面板（顶栏替代）· Ctrl+M 控制面板 · "
+                          "Ctrl+I 墨水屏 · Ctrl+E 裁纸 · Ctrl+R CRT · 右键＝机身菜单 · "
+                          "免密钥（本机窗口）· F3 速查 · F8 编辑器 · F12 停止")
+        self._menu_actions()                             # QAction 快捷键＝原 menuBar 条目（同源不复制口径）
 
     def _timers(self):
         self.t_ui = QTimer(self); self.t_ui.timeout.connect(self.tick); self.t_ui.start(150)
@@ -298,37 +424,156 @@ class Shell(QMainWindow):
         self.t_bus = QTimer(self); self.t_bus.timeout.connect(self.bus_poll); self.t_bus.start(1000)
         self.t_task = QTimer(self); self.t_task.timeout.connect(lambda: self.fax("pollTasks")); self.t_task.start(4000)
 
-    def _menu(self):
-        m = self.menuBar().addMenu("壳(&S)")
-        for label, fn, sc in (("速查 :help", lambda: self.echo(core.HELP), "F3"),
-                              ("命令表 :cmds", lambda: self._meta("cmds"), "Ctrl+H"),
-                              ("技能清单 :skills", lambda: self._open("skills"), "Ctrl+K"),
-                              ("会话拓扑 :session overview", lambda: self._meta("session", "overview"), "Ctrl+J"),
-                              ("任务表面板", lambda: self._open("tasks"), "Ctrl+T"),
-                              ("配置面板", lambda: self._open("config"), "Ctrl+P"),
-                              ("权限面板", lambda: self._open("perms"), None),
-                              ("编辑器（:edit）", self.open_editor, "F8"),
-                              ("巡检 ALL", lambda: self.fax("pollAll"), "F5"),
-                              ("重启壳（换前端 :restart）", lambda: self.submit(":restart"), None)):
-            a = QAction(label, self); a.triggered.connect(fn)
-            with contextlib.suppress(Exception): sc and a.setShortcut(QKeySequence(sc))
+    # ---------- 顶栏替代件（批40 零顶栏：命令面板＋右键菜单·原菜单条目一字不差搬入） ----------
+    MENU_ITEMS = (
+        ("速查 :help", "shell", lambda w: w.echo(core.HELP), "F3"),
+        ("命令表 :cmds", "shell", lambda w: w._meta("cmds"), "Ctrl+H"),
+        ("技能清单 :skills", "shell", lambda w: w._open("skills"), ""),
+        ("会话拓扑 :session overview", "shell", lambda w: w._meta("session", "overview"), "Ctrl+J"),
+        ("任务表面板", "shell", lambda w: w._open("tasks"), "Ctrl+T"),
+        ("配置面板", "shell", lambda w: w._open("config"), "Ctrl+P"),
+        ("权限面板", "shell", lambda w: w._open("perms"), ""),
+        ("编辑器（:edit）", "shell", lambda w: w.open_editor(), "F8"),
+        ("巡检 ALL", "shell", lambda w: w.fax("pollAll"), "F5"),
+        ("重启壳（换前端 :restart）", "shell", lambda w: w.submit(":restart"), ""),
+        ("撕纸清屏", "fax", lambda w: w.fax("tear"), ""),
+        ("复制输出", "fax", lambda w: w.fax("copyAll"), "Ctrl+Shift+C"),
+        ("下载 .txt", "fax", lambda w: w.fax("dl"), ""),
+        ("详细细节（长输出）", "fax", lambda w: w._open("detail"), ""),
+        ("跨会话明细", "fax", lambda w: w._open("bus"), ""),
+        ("合上抽屉", "fax", lambda w: w.fax("closeDrawer"), ""),
+        ("裁纸 CUT（五态推进）", "fax", lambda w: w.fax("cut"), "Ctrl+E"),
+        ("墨水屏面板（三段·无动效）", "fax", lambda w: w.fax("eink"), "Ctrl+I"),
+        ("CRT 送稿口成像开关", "fax", lambda w: w.fax("crt"), "Ctrl+R"),
+        ("控制面板展开/收起", "fax", lambda w: w.fax("ctl"), "Ctrl+M"),
+        ("视图轮转（纸卷／送稿／墨水屏）", "fax", lambda w: w.fax("view"), "Ctrl+V"),
+        ("命令面板（顶栏替代）", "fax", lambda w: w.fax("palette"), "Ctrl+K"),
+        ("界面口径（网页端镜像·免密钥）", "help", lambda w: w.echo(w.about_text()), ""),
+        ("关于", "help", lambda w: w.echo(core.banner()), ""),
+    )
+
+    def about_text(self):
+        return ("本壳＝sms-shell 网页端传真机界面的本机镜像·批40 零顶栏三区骨架：常驻只 A 纸卷区（出纸正文＋状态行 "
+                "LCD 六格/LED 七灯＋裁纸刀）、B 送稿口（CRT 绿字黑底·扫描线·余辉·块光标）、C 墨水屏（只三段·无动效）；"
+                "控制面板（META 键阵·F1 六组·拨号盘）与抽屉＝按需展开（Ctrl+M）。机身不挂原生菜单栏、不装 brand 横条——"
+                "菜单职能由命令面板 Ctrl+K（条目同源 MENU_ITEMS·出口同实体键）＋右键菜单承担，快捷键一律保 QAction 级。"
+                "版式与键位现取 web_page.html，数据经 web_shell 面板件进程内直调——GUI 端不做任何密钥验证："
+                "不开端口、不读/不显影/不复制 token，LCD 只标『本机直连』。路由仍走 shell_core（同 TUI）。")
+
+    def _menu_actions(self):
+        """MENU_ITEMS → QAction（挂窗口不挂菜单栏＝零顶栏下 F3/F5/F8/Ctrl+* 全部入口不丢）。"""
+        self.acts = []
+        for label, _grp, fn, sc in self.MENU_ITEMS:
+            a = QAction(label, self)
+            a.triggered.connect(lambda _f=fn: _f(self))
+            with contextlib.suppress(Exception):
+                sc and a.setShortcut(QKeySequence(sc))
+            self.addAction(a); self.acts.append(a)
+        return len(self.acts)
+
+    def palette_rows(self, q=""):
+        """命令面板数据源（纯构造·可离线单测·不新建口径）：META 元指令＋F1 快捷＋常用拨号＋拨号盘
+        ＋抽屉面板＋MENU_ITEMS 动作＋最近历史 → [(组, 名, 副标, 可调用)]，kw 模糊过滤。"""
+        kw = str(q or "").strip().lower()
+        rows = []
+        META_, METAD_, PAD_, QUICK_, F1_ = (self.fw.get("keys") or fax.keys())
+        for m in META_ or []:
+            sub = METAD_.get(m, "") if isinstance(METAD_, dict) else ""
+            rows.append(("元指令", ":" + m, sub, lambda c=":" + m: self.feed(c + " ")))
+        for _g, items in (F1_ or []):
+            for cmd, name in items:
+                rows.append(("快捷", name, str(cmd).strip(), lambda c=cmd: self.faxPick(c)))
+        for lab, c in QUICK_ or []:
+            rows.append(("拨号", lab, str(c).strip(), lambda _c=c: self.feed(_c)))
+        for k, c, lab in PAD_ or []:
+            rows.append(("盘面", "%s %s" % (k, lab), str(c).strip(), lambda _c=c: self.feed(_c)))
+        for menu_id, (title, src) in fax.DRAWERS.items():
+            rows.append(("面板", title, menu_id, lambda s=src, t=title: self._open(s, t)))
+        for label, grp, fn, sc in self.MENU_ITEMS:
+            rows.append(("动作·" + grp, label, sc or "", lambda _f=fn: _f(self)))
+        for h in self.hist[-12:]:
+            rows.append(("历史", str(h)[:70], "回车重发", lambda t=h: self.feed(t)))
+        if not kw:
+            return rows
+        return [r for r in rows if any(kw in str(x or "").lower() for x in (r[0], r[1], r[2]))]
+
+    def palette(self):
+        """命令面板＝被去掉的顶部菜单的全量替代（Ctrl+K）：过滤＋↑↓＋回车执行＋Esc 关闭。
+        出口一律同实体键/菜单（feed／faxPick／_open／submit）＝路由仍 shell_core.handle，不新建口径。"""
+        win = self
+        box = QDialog(win); box.setObjectName("palette")
+        box.setWindowTitle("命令面板 · 顶栏替代（零顶栏·条目同源 MENU_ITEMS·出口同实体键）")
+        box.resize(780, 480)
+        v = QVBoxLayout(box); v.setContentsMargins(8, 8, 8, 8); v.setSpacing(6)
+        holder = {"rows": []}
+
+        def run_row():
+            i = box.lst.currentRow(); rows = holder["rows"]
+            if not (0 <= i < len(rows)):
+                box.done(0); return
+            fn = rows[i][3]
+            box.done(0)
+            try:
+                fn()
+            except Exception as e:
+                win.paper("系统", "命令面板执行失败：%s: %s" % (type(e).__name__, str(e)[:120]), "err")
+
+        def fill():
+            rows = win.palette_rows(box.ed.text()); holder["rows"] = rows
+            box.lst.clear()
+            for kind, name, sub, _fn in rows[:400]:
+                box.lst.addItem(QListWidgetItem("%-9s %s%s" % (kind, name, ("   " + sub) if sub else "")))
+            box.lst.setCurrentRow(0)
+
+        class Edit(QLineEdit):
+            def keyPressEvent(self, ev):
+                k = ev.key()
+                if k in (Qt.Key.Key_Return, Qt.Key.Key_Enter): run_row(); return
+                if k == Qt.Key.Key_Escape: box.done(0); return
+                if k == Qt.Key.Key_Down:
+                    box.lst.setCurrentRow(min(box.lst.count() - 1, 0)); box.lst.setFocus(); return
+                super().keyPressEvent(ev)
+
+        class List(QListWidget):
+            def keyPressEvent(self, ev):
+                k = ev.key()
+                if k in (Qt.Key.Key_Return, Qt.Key.Key_Enter): run_row(); return
+                if k == Qt.Key.Key_Escape: box.done(0); return
+                if k == Qt.Key.Key_Up: self.setCurrentRow(max(0, self.currentRow() - 1)); return
+                if k == Qt.Key.Key_Down: self.setCurrentRow(min(self.count() - 1, self.currentRow() + 1)); return
+                if len(ev.text() or "") and ev.text().strip():
+                    box.ed.setFocus(); box.ed.keyPressEvent(ev); return
+                super().keyPressEvent(ev)
+
+        box.ed = Edit(box); box.ed.setObjectName("palEdit")
+        box.ed.setPlaceholderText("输入过滤（元指令／动作／面板／快捷／历史）· 回车执行 · Esc 关闭 · 顶栏替代 Ctrl+K")
+        box.ed.setFont(fax._f(14))
+        box.lst = List(box); box.lst.setObjectName("palList"); box.lst.setFont(fax._f(13))
+        box.lst.setAlternatingRowColors(True)
+        v.addWidget(box.ed); v.addWidget(box.lst, 1)
+        hint = QLabel("↑↓ 选择 · 回车执行 · Esc 关闭 · 与实体键/右键菜单同源（MENU_ITEMS·不第二条口径）")
+        hint.setObjectName("hint"); hint.setFont(fax._f(11, False)); v.addWidget(hint)
+        box.ed.textChanged.connect(fill)
+        box.lst.itemDoubleClicked.connect(lambda _i=None: run_row())
+        fill(); box.ed.setFocus()
+        box.exec()
+        with contextlib.suppress(Exception):
+            win.ent.setFocus()
+        return {"ok": True, "rows": len(holder["rows"])}
+
+    def contextMenuEvent(self, ev):
+        """右键菜单＝零顶栏下的常驻菜单入口（光标在纸卷上只给纸动作，其余给全量三段）。"""
+        in_roll = False
+        with contextlib.suppress(Exception):
+            in_roll = bool(self.fw["roll"].underMouse())
+        m = QMenu(self)
+        groups = ("fax",) if in_roll else ("shell", "fax", "help")
+        for label, grp, fn, sc in self.MENU_ITEMS:
+            if grp not in groups: continue
+            a = QAction(label, self)
+            a.triggered.connect(lambda _f=fn: _f(self))
             m.addAction(a)
-        g = self.menuBar().addMenu("传真机(&F)")
-        for label, fn in (("撕纸清屏", lambda: self.fax("tear")), ("复制输出", lambda: self.fax("copyAll")),
-                          ("下载 .txt", lambda: self.fax("dl")), ("详细细节（长输出）", lambda: self._open("detail")),
-                          ("跨会话明细", lambda: self._open("bus")), ("合上抽屉", lambda: self.fax("closeDrawer")),
-                          ("裁纸 CUT（五态推进）", lambda: self.fax("cut")),
-                          ("墨水屏面板（三段·无动效）", lambda: self.fax("eink")),
-                          ("CRT 送稿口成像开关", lambda: self.fax("crt"))):
-            a = QAction(label, self); a.triggered.connect(fn); g.addAction(a)
-        v = self.menuBar().addMenu("帮助(&H)")
-        about = ("本壳＝sms-shell 网页端传真机界面的本机镜像：机身五区（进纸器/出纸口/控制面板/拨号盘+走纸/抽屉面板）"
-                 "＋批39 三视图件（t6 出纸末端裁纸刀五态推进·t8 送稿口 CRT 绿字黑底成像·t10 墨水屏三段面板），"
-                 "版式与键位现取 web_page.html，数据经 web_shell 面板件进程内直调——GUI 端不做任何密钥验证："
-                 "不开端口、不读/不显影/不复制 token，LCD 只标『本机直连』。路由仍走 shell_core（同 TUI）。")
-        for label, fn in (("界面口径（网页端镜像·免密钥）", lambda: self.echo(about)),
-                          ("关于", lambda: self.echo(core.banner()))):
-            a2 = QAction(label, self); a2.triggered.connect(fn); v.addAction(a2)
+        m.exec(ev.globalPos() if hasattr(ev, "globalPos") else ev.pos())
 
     # ---------- 机身动作（网页端同名动作的 Qt 对应体·函数名字面一致便于对照） ----------
     def feed(self, text):
@@ -347,7 +592,8 @@ class Shell(QMainWindow):
                   "doResume": self.doResume, "tear": self.tear, "copyAll": self.copyAll, "dl": self.dl,
                   "speakLast": self.speakLast, "closeDrawer": self.closeDrawer,
                   "cut": self.cut, "cutStep": self._cut_step, "eink": self.einkToggle,
-                  "crt": self.crtToggle,
+                  "crt": self.crtToggle, "ctl": self.ctlToggle, "view": self.viewToggle,
+                  "palette": self.palette,
                   "hist(-1)": lambda a=None: self.history(True), "hist(1)": lambda a=None: self.history(False),
                   "clear()": lambda a=None: self.feed("")}.get(act)
             if fn is None: return self.paper("系统", "机身无此动作：%s" % act, "sys")
@@ -480,6 +726,37 @@ class Shell(QMainWindow):
         self.paper("系统", "CRT 送稿口成像层＝%s（绿字黑底·扫描线·余辉·块光标；键盘与路由口径不变）" %
                    ("开" if on else "关"), "sys")
         return {"ok": on}
+
+    # ---------- 控制面板按需化（批40 零顶栏：常驻五区→三区＋按需展开） ----------
+    def ctlToggle(self, arg=None):
+        """控制面板（META 键阵／F1 六组／拨号盘）展开/收起——去顶栏后控制件不常驻，Ctrl+M 唤出。"""
+        z = self.fw.get("ctlzone")
+        if z is None:
+            self.paper("系统", "机身无控制面板件（ctlzone）", "err"); return {"ok": False}
+        show = not bool(z.isVisible())
+        z.setVisible(show)
+        if show:
+            with contextlib.suppress(Exception):
+                sb = self.fw["roll"].verticalScrollBar(); z.setParent(self) if False else None
+            self.paper("系统", "控制面板已展开（META 键阵 %d 键 · F1 六组 · 拨号盘 12 位）——Ctrl+M 收起" %
+                       len((self.fw.get("keys") or fax.keys())[0] or []), "sys")
+        with contextlib.suppress(Exception):
+            self.fw["ctlzone_btn"].setText("▦ 收起控制面 Ctrl+M" if show else "▦ 控制面板 Ctrl+M")
+        self._hud("ctl", "控制面板 " + ("展开" if show else "收起"), 600)
+        return {"ok": show}
+
+    def viewToggle(self, arg=None):
+        """视图循环：A 纸卷／B 送稿／C 墨水屏 三态焦点排布（窄屏 1280×720 也满幅可用）。"""
+        self._view_i = (getattr(self, "_view_i", 0) + 1) % 3
+        names = ("纸卷 A", "送稿 B", "墨水屏 C")
+        if self._view_i == 2:
+            self._eink_on = True
+            with contextlib.suppress(Exception): self.fw["einkzone"].setVisible(True)
+            self.einkRefresh()
+        with contextlib.suppress(Exception):
+            self.fw["ctlzone"].setVisible(self._view_i == 0 and bool(self.fw["ctlzone"].isVisible()))
+        self.paper("系统", "视图焦点＝%s（三区轮转 Ctrl+V）" % names[self._view_i], "sys")
+        return {"ok": names[self._view_i]}
 
     # ---------- t10 墨水屏消息面板（只三段·无动效·数据仍走进程内 api） ----------
     def einkToggle(self, arg=None):
@@ -943,13 +1220,51 @@ def _selftest(app, win):
            "crt_overlay": crt, "crt_overlay_off": crt_off, "crt_ok": crt_ok,
            "crt_now": bool(win.ent.crt_on), "eink_ok": eink_ok, "eink_len": len(eink_txt),
            "eink_sections": list(fax.EINK_SECTIONS), "eink_now": bool(win._eink_on)}
+    # ---- 批40 零顶栏三区骨架取证（命令面板＝顶栏替代·控制面板按需化·无菜单栏/无 brand 横条） ----
+    src_self = io.open(__file__, encoding="utf-8", errors="replace").read()
+    n_acts = len(getattr(win, "acts", []))
+    rows_all = win.palette_rows("")
+    rows_f = win.palette_rows(":cmds")
+    names_all = [r[1] for r in rows_all]
+    win.fax("ctl"); ctl_on = bool(win.fw["ctlzone"].isVisible())
+    win.fax("ctl"); ctl_off = not bool(win.fw["ctlzone"].isVisible())
+    win._eink_on = False
+    with contextlib.suppress(Exception): win.fw["einkzone"].setVisible(False)
+    for _ in range(2): win.fax("view")                   # 纸卷 A→送稿 B→墨水屏 C（第 3 态唤出墨水屏）
+    view_i = getattr(win, "_view_i", -1)
+    eink_open_by_view = bool(win._eink_on) and bool(win.fw["einkzone"].isVisible())
+    win.fax("view"); win._view_i = 0
+    required = ("banner", "roll", "drawer", "dtitle", "dbody", "blade", "blade_tag", "blade_pos",
+                "eink", "einkzone", "ctlzone", "keys", "btn_stop", "btn_go", "btn_all", "btn_speak")
+    missing = [k for k in required if k not in win.fw]
+    n_acts = len(getattr(win, "acts", []))
+    rows_all = win.palette_rows("")
+    rows_f = win.palette_rows(":cmds")
+    names_all = [r[1] for r in rows_all]
+    src_self = io.open(__file__, encoding="utf-8", errors="replace").read()
+    mb = "self." + "menuBar()"; nb = "SMS-" + "FAX · GUI"
+    out["zero_topbar"] = (mb not in src_self and nb not in src_self
+                          and all(hasattr(win, x) for x in ("palette", "palette_rows", "ctlToggle",
+                                                             "contextMenuEvent", "_menu_actions")))
+    out["palette_rows"] = len(rows_all); out["palette_filtered"] = len(rows_f)
+    out["palette_has_meta_and_panels"] = (":cmds" in names_all and "任务表" in names_all
+                                         and "十二链" in names_all)
+    out["qactions"] = n_acts; out["menu_items"] = len(win.MENU_ITEMS)
+    out["ctl_cycle"] = [ctl_on, ctl_off]; out["view_cycle"] = [view_i, eink_open_by_view]
+    out["fw_missing_required"] = missing
+    out["lcd_cells"] = len([k for k in win.fw if str(k).startswith("lcd_")])
+    out["led_lamps"] = len([k for k in win.fw if str(k).startswith("led_")])
     print("SELFTEST " + json.dumps(out, ensure_ascii=False))
     ok_all = (out["saved"] and out["visible_rows"] >= 10 and out["meta_keys"] >= 30
               and out["no_token_face"] and out["f1_groups"] >= 5 and out["roll_plain"] >= 4
               and out["details"] >= 5 and out["panel_min"] >= 40 and out["task_table_len"] >= 2
               and len(panels) == 15 and out["qss_len"] > 1500
               and out["cut_ok"] and out["cut_steps"] == 5 and out["led_names"] == 7
-              and out["crt_ok"] and out["eink_ok"] and out["eink_len"] > 8)
+              and out["crt_ok"] and out["eink_ok"] and out["eink_len"] > 8
+              and out["zero_topbar"] and out["palette_rows"] >= 60 and out["qactions"] >= out["menu_items"]
+              and out["ctl_cycle"] == [True, True] and not out["fw_missing_required"]
+              and out["palette_has_meta_and_panels"] and 0 < out["palette_filtered"] < out["palette_rows"]
+              and out["lcd_cells"] == 6 and out["led_lamps"] == 7 and out["view_cycle"] == [2, True])
     return 0 if ok_all else 1
 
 if __name__ == "__main__":
