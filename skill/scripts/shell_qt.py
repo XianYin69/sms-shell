@@ -3,6 +3,13 @@
 机身 chassis → ① 进纸器 DOC FEEDER（话语/:元指令·Tab 补全·↑↓ 历史·常用拨号）② 出纸口 PAPER TRAY（逐行传真·
 米纸卷＋撕纸线·复制/下载/撕纸清屏）③ 控制面板 CONTROL（LCD 六行＋六盏指示灯＋META 元指令键阵＋F1 六组）
 ④ 拨号盘＋走纸控制（↻巡检/🔊朗读/⏸停止/▶继续）⑤ 抽屉面板（任务表/计划/链/会话/技能/文件/配置/权限/明细）。
+批39 三视图件（算式与版式真源全在 shell_qt_fax.py，本文件只接绘制与状态推进·零新端口零新进程零子线程）：
+t6 出纸末端裁纸刀（✂ 裁纸 CUT：fax.cut_next 五态推进·进程内 QTimer 每 200ms 走一步·刀条 QFrame#blade[st=…]
+随态换渐变＋行程百分比＋裁纸指示灯·落 drop 在纸面留裁断印记·途中再点＝中止）；t8 送稿口 CRT（绿字 #33ff66
+黑底＋扫描线叠加＋余辉衰减＋块光标闪烁：Input.paintEvent/_crt_overlay 三层成像，keyPressEvent 与
+路由/stop/ask 口径一字未改，fax("crt") 可关成像层）；t10 墨水屏消息面板（▤ 墨水屏 E-INK：只显示
+fax.EINK_SECTIONS 三段＝会话信息／任务表／后台任务·低饱和灰白实色·无动效·仿电子墨水印，
+数据仍走 fax.api 进程内直调）。自检含三件断言（cut_ok/crt_ok/eink_ok）。
 **GUI 端不做任何密钥验证**：网页端的门禁插令牌区（#gate）在图形壳不存在——本机窗口即可信，面板数据经
 shell_qt_fax.api() 进程内直调 web_shell 同一套 getter/poster，绝不开端口、绝不读/显影/复制/轮换 token，
 info 结果一律 scrub 掉 token/指纹。版式与键位每次现取 web_page.html（CSS :root 变量→QSS 渐变、
@@ -46,17 +53,31 @@ def _scripts():
         cand.append(os.path.join(root, name, "skill", "scripts"))
     return next((c for c in cand if c and os.path.isfile(os.path.join(c, "shell_core.py"))), here)
 S = _scripts()
-S not in sys.path and sys.path.insert(0, S)
+# 本目录优先：混合/覆盖安装环境里 PYTHONPATH 带着核仓旧副本，同目录件须压过它
+if sys.path[:1] != [S]: sys.path.insert(0, S)
 import shell_core as core                      # 壳共享路由（元指令＋数据流）＝唯一真源
 import msg_flow, detail_bus, atomic_io, settings as st
 import stop_channel as stop
+def _load_fax():
+    """镜像件按「与本文件同目录」显式装载：引擎件（shell_core 等）会把核仓旧副本插到 sys.path 最前，
+    裸 import 可能拿到旧版 shell_qt_fax.py 配新机身；成对件必须同源（覆盖安装态＝同一路径，行为不变）。"""
+    import importlib.util as _u
+    here = os.path.dirname(os.path.abspath(__file__))
+    p = os.path.join(here, "shell_qt_fax.py")
+    if not os.path.isfile(p): raise ImportError("shell_qt_fax.py 不在 %s" % here)
+    old = sys.modules.get("shell_qt_fax")
+    if old is not None and os.path.abspath(getattr(old, "__file__", "") or "") == p: return old
+    spec = _u.spec_from_file_location("shell_qt_fax", p)
+    m = _u.module_from_spec(spec); sys.modules["shell_qt_fax"] = m; spec.loader.exec_module(m)
+    return m
+
 try:
-    import shell_qt_fax as fax                  # 传真机镜像件（版式取网页端·数据直调 web_shell·无密钥面）
+    fax = _load_fax()                           # 传真机镜像件（版式取网页端·数据直调 web_shell·无密钥面）
 except ImportError as e:                        # 缺件＝覆盖安装不完整，明确交棒终端入口而非半瞎窗口
     sys.exit("图形壳缺镜像件 shell_qt_fax.py（%s）——跑 deploy.py 或 install_overlay.py --write 补全，"
              "或用 bin/sms-shell-tui 终端入口" % e)
-from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QFont, QKeySequence
+from PyQt6.QtCore import Qt, QRect, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QFont, QKeySequence, QPainter
 from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow, QPlainTextEdit,
                              QPushButton, QTextBrowser, QVBoxLayout, QWidget)
 SMS = core.SMS; TD = os.path.join(SMS, "tasks")
@@ -156,12 +177,71 @@ class Editor(QMainWindow):
 
 
 class Input(QPlainTextEdit):
-    """底部输入：Enter 提交 · Ctrl+Enter 换行 · ↑↓ 历史 · Tab 元指令补全。"""
+    """底部输入（t8 CRT 送稿口）：Enter 提交 · Ctrl+Enter 换行 · ↑↓ 历史 · Tab 元指令补全——
+    keyPressEvent 与路由/stop/ask 口径一字未改；CRT 只是叠加成像：绿字黑底（#33ff66 系·QSS cmd[crt="1"]）
+    ＋扫描线叠加＋余辉衰减＋块光标闪烁。算式真源＝shell_qt_fax.crt_*（单点），绘制＝_crt_overlay，
+    走进程内 QTimer·零新端口、零新进程、零子线程。"""
     def __init__(self, win):
         super().__init__(win); self.win = win; self.hist_pos = None
+        self.setObjectName("cmd"); self.setProperty("crt", "1")   # QSS 对位镜像件送稿口区（CRT 实色底）
+        self.crt_on = True; self.crt_force = False; self._glow_t = time.time(); self._cur_on = True
         self.setPlaceholderText("话语回车 → 当前 agent 数据流 · :help 元指令 · stop/停止 收口当前任务 · quit 退出（Ctrl+Enter 换行 · ↑↓ 历史 · Tab 补全）")
         f = QFont("Cascadia Mono"); f.setStyleHint(QFont.StyleHint.Monospace); self.setFont(f)
         self.setFixedHeight(64)
+        self.textChanged.connect(self._crt_glow)
+        self.t_crt = QTimer(self); self.t_crt.timeout.connect(self._crt_blink); self.t_crt.start(500)
+        with contextlib.suppress(Exception): self.style().polish(self)
+
+    def _crt_glow(self):
+        """打字＝荧光粉重新点亮：余辉计时归零（衰减算式＝fax.crt_afterglow）。"""
+        self._glow_t = time.time()
+
+    def _crt_blink(self):
+        """块光标闪烁（500ms 进程内 QTimer·不动文本模型）。"""
+        self._cur_on = not bool(getattr(self, "_cur_on", True))
+        with contextlib.suppress(Exception): self.viewport().update()
+
+    def crt_cursor_rect(self):
+        """块光标矩形（视口坐标·宽≈0.62 字宽＝fax.crt_block_cursor）。"""
+        r = self.cursorRect()
+        try:
+            r.setWidth(fax.crt_block_cursor(self.fontMetrics().averageCharWidth() or 8))
+        except Exception:
+            r.setWidth(7)
+        return r
+
+    def crt_scan(self):
+        """扫描线 y 位表（每 3px 一条·真源＝fax.crt_scanlines）。"""
+        with contextlib.suppress(Exception):
+            return fax.crt_scanlines(self.viewport().height(), 3)
+        return []
+
+    def _crt_overlay(self, p, w=0, h=0):
+        """CRT 三层成像（余辉→扫描线→块光标）画到任意 painter：paintEvent 与自检走同一条路。"""
+        vp = self.viewport()
+        c = fax.crt_colors()
+        g = fax.crt_afterglow((time.time() - float(getattr(self, "_glow_t", time.time()))) * 1000.0)
+        r = QRect(0, 0, int(w or vp.width()), int(h or vp.height()))
+        wash = QColor(c["glow"]); wash.setAlpha(int(96 * g))
+        p.fillRect(r, wash)
+        pen = QColor("#000000"); pen.setAlpha(70); p.setPen(pen)
+        for y in self.crt_scan():
+            if y < r.height(): p.drawLine(0, y, r.width(), y)
+        cr = QRect()
+        if getattr(self, "_cur_on", True) and (self.hasFocus() or getattr(self, "crt_force", False)):
+            cr = self.crt_cursor_rect()
+            p.fillRect(cr, QColor(c["fg"]))
+            txt = self.toPlainText(); idx = self.textCursor().position()
+            ch = txt[idx] if 0 <= idx < len(txt) else ""
+            if ch.strip(): p.setPen(QColor(c["bg"])); p.drawText(cr, Qt.AlignmentFlag.AlignCenter, ch)
+        return {"glow": round(g, 4), "scanlines": len(self.crt_scan()), "cursor": not cr.isNull()}
+
+    def paintEvent(self, ev):
+        super().paintEvent(ev)               # 文本照常由 QPlainTextEdit 绘（输入语义不变）
+        if not getattr(self, "crt_on", True): return
+        try:
+            p = QPainter(self.viewport()); self._crt_overlay(p); p.end()
+        except Exception: pass               # 成像失败不得影响输入与路由
     def keyPressEvent(self, ev):
         k, m = ev.key(), ev.modifiers()
         if k in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -186,6 +266,8 @@ class Shell(QMainWindow):
         self.seq = self.bus_off = self.hi = 0
         self.awaiting = None; self.task_prog = ""; self.steps = []; self.editors = []
         self._bus_off = None; self._info = {}; self._panel = ""; self._last_out = ""
+        self._tasks_cache = {}; self._eink_on = False
+        self.cut_state = "idle"; self.cut_seq = 0; self._cut_timer = None
         try:
             import session_reg as sr; SELF = sr.bind("client", os.getpid(), "Qt壳")
             os.environ.setdefault("SMS_SESSION", SELF)
@@ -207,7 +289,8 @@ class Shell(QMainWindow):
         self.out = self.fw["roll"]; self.drawer = self.fw["drawer"]
         self.stat = QLabel(""); self.stat.setObjectName("statusbar")
         c = self.centralWidget(); c.layout().addWidget(self.stat)
-        self.stat.setText("● 就绪 · Enter 送稿 · Tab 补全 · F3 速查 · F8 编辑器 · F12 停止 · 免密钥（本机窗口）")
+        self.stat.setText("● 就绪 · Enter 送稿 · Tab 补全 · F3 速查 · F8 编辑器 · F12 停止 · "
+                          "CRT 送稿口（绿字黑底·扫描线·余辉·块光标）· ✂ 裁纸 · ▤ 墨水屏 · 免密钥（本机窗口）")
 
     def _timers(self):
         self.t_ui = QTimer(self); self.t_ui.timeout.connect(self.tick); self.t_ui.start(150)
@@ -233,10 +316,14 @@ class Shell(QMainWindow):
         g = self.menuBar().addMenu("传真机(&F)")
         for label, fn in (("撕纸清屏", lambda: self.fax("tear")), ("复制输出", lambda: self.fax("copyAll")),
                           ("下载 .txt", lambda: self.fax("dl")), ("详细细节（长输出）", lambda: self._open("detail")),
-                          ("跨会话明细", lambda: self._open("bus")), ("合上抽屉", lambda: self.fax("closeDrawer"))):
+                          ("跨会话明细", lambda: self._open("bus")), ("合上抽屉", lambda: self.fax("closeDrawer")),
+                          ("裁纸 CUT（五态推进）", lambda: self.fax("cut")),
+                          ("墨水屏面板（三段·无动效）", lambda: self.fax("eink")),
+                          ("CRT 送稿口成像开关", lambda: self.fax("crt"))):
             a = QAction(label, self); a.triggered.connect(fn); g.addAction(a)
         v = self.menuBar().addMenu("帮助(&H)")
-        about = ("本壳＝sms-shell 网页端传真机界面的本机镜像：机身五区（进纸器/出纸口/控制面板/拨号盘+走纸/抽屉面板），"
+        about = ("本壳＝sms-shell 网页端传真机界面的本机镜像：机身五区（进纸器/出纸口/控制面板/拨号盘+走纸/抽屉面板）"
+                 "＋批39 三视图件（t6 出纸末端裁纸刀五态推进·t8 送稿口 CRT 绿字黑底成像·t10 墨水屏三段面板），"
                  "版式与键位现取 web_page.html，数据经 web_shell 面板件进程内直调——GUI 端不做任何密钥验证："
                  "不开端口、不读/不显影/不复制 token，LCD 只标『本机直连』。路由仍走 shell_core（同 TUI）。")
         for label, fn in (("界面口径（网页端镜像·免密钥）", lambda: self.echo(about)),
@@ -259,6 +346,8 @@ class Shell(QMainWindow):
                   "pollSolo": self.pollSolo, "doStop": lambda a=None: self.stop_one(""),
                   "doResume": self.doResume, "tear": self.tear, "copyAll": self.copyAll, "dl": self.dl,
                   "speakLast": self.speakLast, "closeDrawer": self.closeDrawer,
+                  "cut": self.cut, "cutStep": self._cut_step, "eink": self.einkToggle,
+                  "crt": self.crtToggle,
                   "hist(-1)": lambda a=None: self.history(True), "hist(1)": lambda a=None: self.history(False),
                   "clear()": lambda a=None: self.feed("")}.get(act)
             if fn is None: return self.paper("系统", "机身无此动作：%s" % act, "sys")
@@ -331,7 +420,89 @@ class Shell(QMainWindow):
 
     def tear(self):
         """撕纸清屏：纸卷清空回纸头（明细/任务表面板不受影响）。"""
-        self.out.clear(); self.paper("系统", "已撕纸·出纸口回纸头", "sys")
+        self.out.clear(); self.cut_state = "idle"; self._cut_apply()
+        self.paper("系统", "已撕纸·出纸口回纸头", "sys")
+
+    # ---------- t6 裁纸刀（出纸末端·状态推进：进程内 QTimer 走步·零新端口零新进程零子线程） ----------
+    def cut(self, arg=None):
+        """✂ 裁纸 CUT：起一轮裁纸（feed→clamp→cut→drop→idle），每步 200ms 由进程内 QTimer 推进；
+        途中再点＝中止回待机（状态一律上刀条标签，不静默、不外抛）。"""
+        if getattr(self, "_cut_timer", None) is not None:
+            self._cut_end("裁纸中止 TRIM HALT")
+            self.paper("系统", "裁纸中止·刀条回待机", "sys"); return {"ok": "halt"}
+        self._cut_timer = QTimer(self); self._cut_timer.timeout.connect(self._cut_step)
+        self._cut_timer.start(200)
+        self.cut_state = "idle"; self._cut_apply()
+        self.paper("系统", "裁纸开始：纸张送出→压脚压纸→刀刃下行→断纸落盘", "sys")
+        return {"ok": "run"}
+
+    def _cut_end(self, msg=""):
+        with contextlib.suppress(Exception):
+            self._cut_timer.stop(); self._cut_timer.deleteLater()
+        self._cut_timer = None; self.cut_state = "idle"; self._cut_apply()
+        if msg: self.banner(msg, "warn")
+
+    def _cut_step(self):
+        """推进一态（真源＝fax.cut_next）：落 drop＝纸面留裁断印记并计数，落 idle＝本轮收口。"""
+        self.cut_state = fax.cut_next(self.cut_state)
+        self._cut_apply()
+        if self.cut_state == "drop":
+            self.cut_seq += 1
+            self.paper("裁纸", "", "sys", body_html=fax.cut_mark(self.cut_seq))
+        elif self.cut_state == "idle":
+            self._cut_end()
+            self.paper("系统", "裁纸完成：第 %d 裁落盘（纸面 %d 字）" %
+                       (self.cut_seq, len(self.out.toPlainText())), "sys")
+        return self.cut_state
+
+    def _cut_apply(self):
+        """当前态刷到刀条视觉：QFrame#blade[st=…] 五态渐变＋标签文案/行程百分比＋裁纸指示灯。"""
+        st = self.cut_state
+        try:
+            b = self.fw["blade"]; b.setProperty("st", st); b.style().unpolish(b); b.style().polish(b)
+            tg = self.fw["blade_tag"]; tg.setText(fax.cut_label(st))
+            tg.setStyleSheet("color:%s;font-size:11px;letter-spacing:1px;font-weight:bold" %
+                             (fax.css_vars().get({"stop": "red", "warn": "amber", "go": "grn"}
+                                                  .get(fax.cut_tone(st), ""), "") or "#4c5a68"))
+            self.fw["blade_pos"].setText("行程 %d%%" % round(fax.cut_progress(st) * 100))
+        except Exception: pass
+        self.led("裁纸", "off" if st == "idle" else ("warn" if fax.cut_tone(st) == "warn"
+                                                   else "err" if fax.cut_tone(st) == "stop" else "on"))
+
+    # ---------- t8 CRT 送稿口开关（成像层开/关·键盘与路由口径不动） ----------
+    def crtToggle(self, arg=None):
+        on = not bool(self.ent.crt_on)
+        self.ent.crt_on = on
+        with contextlib.suppress(Exception):
+            self.ent.setProperty("crt", "1" if on else "")
+            self.ent.style().unpolish(self.ent); self.ent.style().polish(self.ent)
+            self.ent.viewport().update()
+        self.paper("系统", "CRT 送稿口成像层＝%s（绿字黑底·扫描线·余辉·块光标；键盘与路由口径不变）" %
+                   ("开" if on else "关"), "sys")
+        return {"ok": on}
+
+    # ---------- t10 墨水屏消息面板（只三段·无动效·数据仍走进程内 api） ----------
+    def einkToggle(self, arg=None):
+        self._eink_on = not bool(self._eink_on)
+        with contextlib.suppress(Exception): self.fw["einkzone"].setVisible(self._eink_on)
+        if self._eink_on:
+            self.einkRefresh(); self.paper("系统", "墨水屏已开（会话信息／任务表／后台任务·无动效）", "sys")
+        return {"ok": "on" if self._eink_on else "off"}
+
+    def eink_bg(self):
+        """后台任务＝进程内在跑/排队（本壳 worker·不起新进程）。"""
+        out = [(tid, str(info.get("text") or "")[:60],
+                time.time() - float(info.get("t0") or time.time()))
+               for tid, info in (self.running or {}).items()]
+        out += [("排队", str(t)[:60], 0.0) for t in (self.pend or [])]
+        return out
+
+    def einkRefresh(self):
+        if not getattr(self, "_eink_on", False): return
+        try:
+            self.fw["eink"].setHtml(fax.eink_html(self._info, self._tasks_cache, self.eink_bg()))
+        except Exception as e:
+            self.paper("系统", "墨水屏刷新失败：%s" % str(e)[:100], "err")
 
     def speakLast(self):
         t = (self._last_out or "").strip()
@@ -396,6 +567,8 @@ class Shell(QMainWindow):
         if lo in (":gui", ":qt", "gui"):
             self.hist.append(text); self.hi = len(self.hist)
             self.echo("当前＝传真机图形壳（shell_qt.py 镜像网页端 · 免密钥）· Qt %s · 并行 %d/%s · 明细 %d 条\n"
+                      "三视图件：✂ 裁纸 CUT（fax.cut_next 五态推进·进程内 QTimer）· CRT 送稿口（绿字黑底＋扫描线"
+                      "＋余辉＋块光标·键盘口径不变）· ▤ 墨水屏（只三段：会话信息／任务表／后台任务·无动效）\n"
                       "可用本地指令：:gui 本壳状态 · :clear 撕纸清屏 · :reload 巡检/重开抽屉 · tui 另起 Textual 终端壳；"
                       "其余 `:` 元指令一律交 shell_core（同 TUI/网页端）。" % (
                           self.qtver(), len(self.running), (self._cap() or "无限"), len(self.details)), kind="info")
@@ -552,7 +725,7 @@ class Shell(QMainWindow):
         except Exception: pass
 
     def pollTasks(self):
-        r = fax.api("/api/tasks")
+        r = self._tasks_cache = fax.api("/api/tasks")
         if r.get("err"):
             self.fw["lcd_任务表"].setText("巡检不可用"); self.led("计划", "err"); return
         rows = r.get("rows") or []
@@ -566,6 +739,7 @@ class Shell(QMainWindow):
             self.fw["btn_go"].setText("▶ 继续 %d/%d" % (dn, tot))
         self.led("计划", "warn" if show else "off")
         if getattr(self, "_panel", "") == "tasks": self.refreshDrawer()
+        self.einkRefresh()
 
     def pollAll(self):
         self.pollInfo(); self.pollSolo(); self.pollTasks()
@@ -713,6 +887,37 @@ def _selftest(app, win):
     task_tbl = win.fw["dbody"].toPlainText()
     win.closeDrawer(); app.processEvents()
     win.paper("系统", "卡纸示例", "err")
+    # ---- 批39 t6 裁纸刀：五态推进（按纯函数逐格走＋_cut_apply 落视觉，自检里不等 QTimer 空转） ----
+    cut_seen = [win._cut_step() for _ in range(len(fax._IDS))]     # 一轮＝feed→clamp→cut→drop→idle
+    win.cut_state = "cut"; win._cut_apply()
+    cut_ok = (cut_seen == ["feed", "clamp", "cut", "drop", "idle"]
+              and win.cut_seq == 1 and "裁纸段" in win.out.toHtml()
+              and win.fw["blade"].property("st") == "cut"
+              and win.fw["blade_tag"].text() == fax.cut_label("cut")
+              and win.fw["blade_pos"].text().endswith("75%"))
+    win.cut_state = "idle"; win._cut_apply()
+    # ---- 批39 t8 CRT 送稿口：离屏走同一条绘制路（余辉＋扫描线＋块光标） ----
+    from PyQt6.QtGui import QPixmap
+    # 闪烁相由 t_crt（500ms）推——自检里钉死相位，取证才确定
+    win.ent.crt_force = True; win.ent._cur_on = True
+    win.ent.setPlainText(":cmds "); win.ent._glow_t = time.time()
+    pm = QPixmap(420, 64); p = QPainter(pm); crt = win.ent._crt_overlay(p, 420, 64); p.end()
+    win.ent._cur_on = False; p = QPainter(pm); crt_off = win.ent._crt_overlay(p, 420, 64); p.end()
+    win.ent._cur_on = True
+    win.ent.crt_force = False
+    win.fax("crt"); win.fax("crt")                                  # 成像层开关（分派走 fax() 机身口）
+    crt_ok = (bool(crt.get("scanlines")) and crt.get("cursor") and float(crt.get("glow") or 0) > 0
+              and not crt_off.get("cursor") and win.ent.objectName() == "cmd")
+    # ---- 批39 t10 墨水屏：三段面板（只三段·无动效·数据走进程内 api） ----
+    win._eink_on = True; win.fw["einkzone"].show()
+    win.running.setdefault("t8", {"text": "墨水屏示例话语", "t0": time.time() - 2})
+    win.einkRefresh(); app.processEvents()
+    eink_txt = win.fw["eink"].toPlainText(); eink_html_src = win.fw["eink"].toHtml()
+    eink_ok = (all(s in eink_txt for s in fax.EINK_SECTIONS) and len(fax.EINK_SECTIONS) == 3
+               and not any(bad in eink_html_src for bad in ("animation", "transition", "@keyframes"))
+               and "墨水屏示例话语" in eink_txt)
+    win.fax("eink"); win.fax("eink")                                # 墨水屏开→关→开（截图留痕用开态）
+    win.running.pop("t8", None)
     shot = os.path.join(os.environ.get("SMS_TMP") or os.getcwd(), "qt_fax_selftest.png")
     ok = win.grab().save(shot)
     from PyQt6.QtCore import QT_VERSION_STR, PYQT_VERSION_STR
@@ -732,12 +937,19 @@ def _selftest(app, win):
            "stop_word_hit": stop.is_stop_word("停止"), "paint_html": bool(paint("$ ls")),
            "queued": len(win.pend), "running": sorted(win.running), "screenshot": shot, "saved": bool(ok),
            "qt": QT_VERSION_STR, "pyqt": PYQT_VERSION_STR, "banner": win.fw["banner"].text(),
-           "banner_len": len(core.banner()), "hud_state": os.path.join(core.SMS, "hud", "state.json")}
+           "banner_len": len(core.banner()), "hud_state": os.path.join(core.SMS, "hud", "state.json"),
+           "led_names": len([k for k in win.fw if str(k).startswith("led_")]),
+           "cut_steps": len(fax.CUT_STEPS), "cut_seq": cut_seen, "cut_ok": cut_ok,
+           "crt_overlay": crt, "crt_overlay_off": crt_off, "crt_ok": crt_ok,
+           "crt_now": bool(win.ent.crt_on), "eink_ok": eink_ok, "eink_len": len(eink_txt),
+           "eink_sections": list(fax.EINK_SECTIONS), "eink_now": bool(win._eink_on)}
     print("SELFTEST " + json.dumps(out, ensure_ascii=False))
     ok_all = (out["saved"] and out["visible_rows"] >= 10 and out["meta_keys"] >= 30
               and out["no_token_face"] and out["f1_groups"] >= 5 and out["roll_plain"] >= 4
               and out["details"] >= 5 and out["panel_min"] >= 40 and out["task_table_len"] >= 2
-              and len(panels) == 15 and out["qss_len"] > 1500)
+              and len(panels) == 15 and out["qss_len"] > 1500
+              and out["cut_ok"] and out["cut_steps"] == 5 and out["led_names"] == 7
+              and out["crt_ok"] and out["eink_ok"] and out["eink_len"] > 8)
     return 0 if ok_all else 1
 
 if __name__ == "__main__":

@@ -8,11 +8,17 @@
    info 结果一律 scrub 掉 token/fingerprint（GUI 无密钥面）。
 ③ 红线：只读页面文本做样式，不改 web_page.html / web_shell.py 语义；写操作只走 web_shell 既有 poster
    （其内部权限门、external 高危 confirm=yes、路径越界 _under 校验全部继承）。
-自检：python -B shell_qt_fax.py --selftest（offscreen·解析＋样式＋数据桥＋出纸渲染，不发模型请求）"""
+④ 视图件三（批39）：t6 出纸末端「裁纸刀」（CUT_STEPS 五态推进·进程内 QTimer 走步·零新端口零新进程）、
+   t8 送稿口 CRT 绿字黑底成像（crt_colors·crt_scanlines·crt_afterglow·crt_block_cursor 算式在此，逐帧绘制在
+   shell_qt.Input 的 paintEvent·不改文本模型与键盘语义）、
+   t10 墨水屏消息面板（EINK_SECTIONS 只「会话信息／任务表／后台任务」三段·低饱和灰白·无动效·仿电子墨水印）——
+   页面没有这些 :root 变量时按内置兜底（css_vars 的 setdefault），网页端补同名变量即刻生效。
+自检：python -B shell_qt_fax.py --selftest（offscreen·解析＋样式＋数据桥＋出纸渲染＋三视图件，不发模型请求）"""
 import os, sys, re, json, time
 
 S = os.path.dirname(os.path.abspath(__file__))
-S not in sys.path and sys.path.insert(0, S)
+# 本目录优先：混合/覆盖安装环境里 PYTHONPATH 常带着核仓旧副本，同目录件须压过它（selftest 才测到本仓文件）
+if sys.path[:1] != [S]: sys.path.insert(0, S)
 _CAND = [os.path.join(S, "web_page.html")]
 
 def _cands():
@@ -31,7 +37,9 @@ def _cands():
 PAGE = _CAND[0]
 ROOT_DEFAULT = dict(m1="#f4f8fc", m2="#ccd6e1", m3="#94a2b3", edge="#5b697a", lcd="#04161b",
                     lcdfg="#3ff0d6", amber="#ffb02e", red="#ff5252", grn="#5cf08a", cyan="#54d9ff",
-                    paper="#f7f3e7", ink="#1b2026")
+                    paper="#f7f3e7", ink="#1b2026",
+                    crtf="#33ff66", crtb="#04070a", crtdim="#12401f", crtgl="#0a2a13",
+                    blade="#b9c5d4", einkb="#eef0ee", einkf="#22282a", einkd="#8f979a")
 
 def read_text(p, tries=6):
     """源盘偶发枚举不全（移动盘/杀软），短休眠重试；取不到返回空串 → 上层走内置兜底。"""
@@ -51,8 +59,23 @@ def page():
 
 # ---------------- 页面解析 ----------------
 def css_vars(src=None):
-    """网页端 :root{--k:v;…} → {k:v}，缺项回落内置同值（GUI 配色＝网页端配色）。"""
-    src = page() if src is None else src
+    """网页端 :root{--k:v;…} → {k:v}，缺项回落内置同值（GUI 配色＝网页端配色）。
+    src=None（现取页面）走 5 秒 TTL 缓存：LED/banner/CRT 成像每帧都取样配色，逐帧读盘＋正则＝掉帧；
+    缓存只在缺省路径生效（显式传 src 仍现算），网页端改动 ≤5s 内生效、不留两份口径。"""
+    global _VARS_TTL
+    if src is None:
+        now = time.time()
+        if _cache.get("vars") and now - float(_cache["vars"][0]) < _VARS_TTL:
+            return dict(_cache["vars"][1])
+        out0 = _css_vars(page())
+        _cache["vars"] = (now, dict(out0))
+        return out0
+    return _css_vars(src)
+
+
+_VARS_TTL = 5.0
+
+def _css_vars(src):
     out = {}
     m = re.search(r":root\{(.*?)\}", src, re.S)
     if m:
@@ -150,7 +173,9 @@ def grad(css):
 def qss(v=None):
     """传真机机身样式表（v＝网页端 :root 变量；缺省现取页面）。objectName 对位：
     chassis 机身 / zone 功能区 / grp·dial 分组 / lcd 屏 / led 灯条 / tray 口腔 / roll 米纸卷 /
-    feeder·cmd 进纸器 / drawer 抽屉 / k·kacc·kwarn·kstop·kgo·ksm 实体键五态。"""
+    feeder·cmd 进纸器 / drawer 抽屉 / k·kacc·kwarn·kstop·kgo·ksm 实体键五态 /
+    blade·bladeTag 裁纸刀（t6·[st=…] 五态刀条）/ einkzone·eink 墨水屏面板（t10·实色无动效）/
+    cmd[crt="1"] 送稿口 CRT 绿字黑底（t8·扫描线·余辉·块光标由 shell_qt.Input 逐帧绘，QSS 只管实色底）。"""
     from string import Template
     v = v or css_vars()
     C = lambda k: v.get(k, ROOT_DEFAULT[k])
@@ -174,7 +199,9 @@ def qss(v=None):
         stopn=G("linear-gradient(180deg,#ff8b8b,#e03a3a 46%,#b32020 54%,#f06b6b)"),
         gon=G("linear-gradient(180deg,#c9ffdc,#6ee29a 46%,#37b06c 54%,#b6f5cd)"),
         edge=C("edge"), lcdfg=C("lcdfg"), cyan=C("cyan"), amber=C("amber"),
-        paper=C("paper"), ink=C("ink"),
+        paper=C("paper"), ink=C("ink"), red=C("red"), grn=C("grn"),
+        crtf=C("crtf"), crtb=C("crtb"), crtdim=C("crtdim"), crtgl=C("crtgl"),
+        blade=C("blade"), einkb=C("einkb"), einkf=C("einkf"), einkd=C("einkd"),
     )
     return Template("""
 QWidget#chassis{background:${chassis};border:1px solid ${edge};border-radius:14px}
@@ -192,6 +219,20 @@ QFrame#feeder{background:${dark};border:1px solid #0a0f14;border-radius:10px}
 QPlainTextEdit#cmd{background:#08131a;color:${lcdfg};border:1px solid #2c4a56;border-radius:7px;
  padding:7px 9px;font-size:13px}
 QPlainTextEdit#cmd:focus{border:1px solid ${cyan}}
+QPlainTextEdit#cmd[crt="1"]{background:${crtb};color:${crtf};border:1px solid ${crtdim};
+ border-radius:2px;font-weight:bold}
+QPlainTextEdit#cmd[crt="1"]:focus{border:1px solid ${crtf}}
+QFrame#blade{background:${dark};border:1px solid #10161d;border-radius:3px}
+QFrame#blade[st="feed"]{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 ${blade},stop:1 ${dark})}
+QFrame#blade[st="clamp"]{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 ${edge},stop:1 ${dark})}
+QFrame#blade[st="cut"]{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #ffffff,stop:.45 ${blade},stop:1 ${edge})}
+QFrame#blade[st="drop"]{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 ${grn},stop:1 ${dark})}
+QLabel#bladeTag{color:#4c5a68;font-size:11px;letter-spacing:1px}
+QLabel#bladeTag[st="cut"]{color:${red};font-weight:bold}
+QLabel#bladeTag[st="drop"]{color:#1d6b41;font-weight:bold}
+QFrame#einkzone{background:${einkb};border:1px solid #b9bfba;border-radius:4px}
+QTextBrowser#eink{background:${einkb};color:${einkf};border:1px solid #c4c9c4;border-radius:2px;
+ padding:6px 8px;font-size:12px}
 QFrame#lcd{background:${lcd};border:3px solid #7d8b9a;border-radius:9px}
 QLabel#lcdKey{color:#7fb9c4;font-size:12px}QLabel#lcdVal{color:#ffffff;font-weight:bold;font-size:12px}
 QLabel#lcdWarn{color:${amber};font-size:12px;font-weight:bold}QLabel#lcdErr{color:#ff8a8a;font-size:12px}
@@ -385,7 +426,8 @@ def key(text, slot=None, style="", small=True, tip=""):
     slot and b.clicked.connect(slot); return b
 
 def build(win, ent):
-    """装机身：返回 {id:widget}（banner/lcd_*/led_*/roll/cmd/drawer/dtitle/dbody/btn_stop/btn_go）。
+    """装机身：返回 {id:widget}（banner/lcd_*/led_*/roll/cmd/drawer/dtitle/dbody/btn_stop/btn_go/
+    blade/blade_tag/blade_pos/eink/einkzone）。
     ent＝送稿口输入控件（由 shell_qt.Input 提供，Enter/Tab/↑↓ 语义已在其中）。"""
     w = {}
     central = QWidget(); central.setObjectName("chassis"); win.setCentralWidget(central)
@@ -402,8 +444,16 @@ def build(win, ent):
     mouth = QFrame(); mouth.setObjectName("mouth"); mouth.setFixedHeight(12); tv.addWidget(mouth)
     w["roll"] = QTextBrowser(); w["roll"].setObjectName("roll"); w["roll"].setFont(_f(13)); tv.addWidget(w["roll"], 1)
     tear = QFrame(); tear.setObjectName("tear"); tear.setFixedHeight(10); tv.addWidget(tear)
+    blade = QFrame(); blade.setObjectName("blade"); blade.setFixedHeight(9)
+    blade.setProperty("st", "idle"); w["blade"] = blade; tv.addWidget(blade)
+    bt = _row(8); tv.addLayout(bt)
+    w["blade_tag"] = QLabel(cut_label("idle")); w["blade_tag"].setObjectName("bladeTag")
+    w["blade_tag"].setFont(_f(11, False)); bt.addWidget(w["blade_tag"])
+    w["blade_pos"] = QLabel("行程 0%"); w["blade_pos"].setObjectName("hint")
+    w["blade_pos"].setFont(_f(10, False)); bt.addWidget(w["blade_pos"]); bt.addStretch(1)
     br = _row(); tv.addLayout(br)
-    for lab, fn in (("⧉ 复制输出", "copyAll"), ("⤓ 下载 .txt", "dl"), ("✂ 撕纸清屏", "tear")):
+    for lab, fn in (("⧉ 复制输出", "copyAll"), ("⤓ 下载 .txt", "dl"), ("✂ 撕纸清屏", "tear"),
+                    ("✂ 裁纸 CUT", "cut"), ("▤ 墨水屏 E-INK", "eink")):
         br.addWidget(key(lab, lambda _f_=fn: win.fax(_f_), tip="网页端同名按钮·本机操作"))
     h = QLabel("Ctrl+Shift+C＝复制全部"); h.setObjectName("hint"); h.setFont(_f(11, False)); br.addWidget(h)
     br.addStretch(1)
@@ -417,7 +467,7 @@ def build(win, ent):
         w["lcd_" + k] = b; lv.addLayout(r)
     pv.addWidget(lcd)
     led = QFrame(); led.setObjectName("led"); lr = _row(9); lr.setContentsMargins(8, 6, 8, 6); led.setLayout(lr)
-    for nm in ("线路", "QQ", "朗读", "做梦", "计划", "对外"):
+    for nm in ("线路", "QQ", "朗读", "做梦", "计划", "裁纸", "对外"):
         lab = QLabel("● " + nm); lab.setObjectName("ledLbl"); lab.setFont(_f(11, False)); lr.addWidget(lab)
         w["led_" + nm] = lab
     lr.addStretch(1); pv.addWidget(led)
@@ -462,6 +512,14 @@ def build(win, ent):
     w["btn_go"] = key("▶ 继续", lambda: win.fax("doResume"), style="go", small=False); dv.addWidget(w["btn_go"])
     w["btn_stop"].hide(); w["btn_go"].hide(); root.addWidget(dial)
 
+    ez = QFrame(); ez.setObjectName("einkzone"); w["einkzone"] = ez
+    zv2 = QVBoxLayout(ez); zv2.setContentsMargins(12, 8, 12, 10); zv2.setSpacing(4)
+    et = QLabel("⑥ 墨水屏消息面板 E-INK · 只三段（会话信息／任务表／后台任务）· 无动效")
+    et.setObjectName("ztitle"); et.setFont(_f(11, False, True)); zv2.addWidget(et)
+    w["eink"] = QTextBrowser(); w["eink"].setObjectName("eink"); w["eink"].setFont(_f(12, False))
+    w["eink"].setMinimumHeight(118); zv2.addWidget(w["eink"])
+    ez.hide(); root.addWidget(ez)
+
     dr = QFrame(); dr.setObjectName("drawer"); w["drawer"] = dr; dvl = QVBoxLayout(dr); dvl.setContentsMargins(12, 9, 12, 11); dvl.setSpacing(6)
     dh = _row(8); dh.addStretch(1)
     dh.addWidget(key("✕ 合上", lambda: win.fax("closeDrawer"), small=True))
@@ -472,6 +530,99 @@ def build(win, ent):
     dr.hide(); root.addWidget(dr)
     w["keys"] = (META_, METAD_, PAD_, QUICK_, F1_)
     return w
+
+# ---------------- t6 裁纸刀（出纸末端·状态推进＋刀条视觉：QTimer 进程内走步·零新端口零新进程） ----------------
+CUT_STEPS = (("idle", "裁纸待机 TRIM IDLE", ""),
+             ("feed", "纸张送出 CUT FEED", "warn"),
+             ("clamp", "压脚压纸 CLAMP", "warn"),
+             ("cut", "刀刃下行 TRIM", "stop"),
+             ("drop", "断纸落盘 DROP", "go"))
+_IDS = [s[0] for s in CUT_STEPS]
+
+def cut_next(state="idle"):
+    """裁纸状态推进（纯函数）：idle→feed→clamp→cut→drop→idle；非法值当 idle 起步。"""
+    i = _IDS.index(state) if state in _IDS else 0
+    return _IDS[(i + 1) % len(_IDS)]
+
+def cut_label(state):
+    return next((lab for k, lab, _t in CUT_STEPS if k == state), str(state))
+
+def cut_tone(state):
+    return next((t for k, _l, t in CUT_STEPS if k == state), "")
+
+def cut_progress(state):
+    """刀刃行程 0.0→1.0（idle=0·drop=1），供刀条与标签显示。"""
+    return 0.0 if state not in _IDS else round(_IDS.index(state) / (len(_IDS) - 1.0), 3)
+
+def cut_mark(n=1):
+    """裁断印记（纸面一行·仿切痕）：出纸口里留下本裁的分隔。"""
+    return ('<div style="margin:2px 0 8px;letter-spacing:2px;color:#5b697a;font-size:11px">'
+            '✂ ───── 裁纸段 %d ─────</div>' % int(n))
+
+# ---------------- t8 CRT 送稿口（绿字黑底·扫描线叠加·余辉衰减·块光标闪烁：算式在此，绘制在 shell_qt.Input） ----------------
+CRT_DEFAULT = dict(fg="#33ff66", bg="#04070a", dim="#12401f", glow="#0a2a13")
+
+def crt_colors(v=None):
+    """CRT 配色：网页端 --crtf/--crtb/--crtgc/--crtgl 优先，缺则内置 #33ff66 系绿字黑底。"""
+    v = v or css_vars()
+    k = lambda key, fb: v.get(key) or fb
+    return dict(fg=k("crtf", CRT_DEFAULT["fg"]), bg=k("crtb", CRT_DEFAULT["bg"]),
+                dim=k("crtgc", CRT_DEFAULT["dim"]), glow=k("crtgl", CRT_DEFAULT["glow"]))
+
+def crt_scanlines(h, gap=3):
+    """扫描线 y 位（黑底 CRT 每 gap 像素一条·下限 2 防糊成一团·高度≤0 出空表）。"""
+    return list(range(0, max(0, int(h)), max(2, int(gap))))
+
+def crt_afterglow(age_ms, half=260.0):
+    """荧光粉余辉衰减（指数·半衰期 half 毫秒）→ 0~1 残影强度；age≤0＝满辉，非法值＝满辉。"""
+    try:
+        a = float(age_ms)
+    except Exception:
+        return 1.0
+    if a <= 0:
+        return 1.0
+    return round(0.5 ** (a / max(1.0, float(half))), 4)
+
+def crt_block_cursor(px):
+    """块光标宽度（≈0.62 字宽·下限 2 像素），配闪烁＝CRT 方块光标。"""
+    return max(2, int(round(float(px) * 0.62)))
+
+# ---------------- t10 墨水屏消息面板（E-INK：只此三段·低饱和灰白·无动效·仿电子墨水印） ----------------
+EINK_SECTIONS = ("会话信息", "任务表", "后台任务")
+
+def _eink_box(title, inner):
+    return ('<div style="border:1px solid #b9bfba;border-radius:2px;background:#eef0ee;'
+            'padding:6px 8px;margin:0 0 8px"><div style="font-weight:bold;letter-spacing:2px;'
+            'color:#2c322e;border-bottom:1px solid #c9cec9;padding-bottom:3px">%s</div>%s</div>'
+            % (_esc(title), inner or '<div style="color:#8f979a;font-size:12px">（无）</div>'))
+
+def _eink_row(k, v):
+    return ('<div style="margin:3px 0;font-size:12px;color:#22282a"><span style="color:#6f7772">'
+            '%s</span> %s</div>' % (_esc(k), _esc(v)))
+
+def eink_html(info=None, tasks=None, bg=None):
+    """三段固定＝会话信息／任务表／后台任务（其余面板一概不上墨水屏）；
+    info·tasks＝/api/info 与 /api/tasks 的 scrub 结果，bg＝进程内〔在跑/排队〕清单 [(tid, 话语, 秒)]。
+    只用实色＋1px 线（无渐变·无动画）＝仿电子墨水印刷；缺项显「（无）」，不静默。"""
+    i, t = info or {}, tasks or {}
+    gw = i.get("gateway") or {}
+    s1 = (_eink_row("会话", str(i.get("session") or "-")) +
+          _eink_row("线路", "本机直连 · 免密钥（不开端口）") +
+          _eink_row("网关", "%s · %s" % ("on" if gw.get("enabled") else "off", gw.get("model") or "-")) +
+          _eink_row("SOLO", "on" if (i.get("solo") or {}).get("enabled") else "off"))
+    rows = (t.get("rows") or [])[:6]
+    s2 = (_eink_row("表", "%s · %s/%s · 未完成 %s · 预计 %s" % (
+            t.get("tid") or "-", t.get("done", 0), t.get("total", 0),
+            t.get("unfinished", 0), t.get("eta") or "-")) +
+          (_eink_row("意图", str(t.get("intent") or "")[:80]) if t.get("intent") else "") +
+          "".join(_eink_row(str(r.get("id") or "-"), "%s · %s · %s" % (
+              str(r.get("goal") or "")[:40], r.get("status") or "-", r.get("skill") or "-"))
+              for r in rows if isinstance(r, dict)))
+    s3 = "".join(_eink_row(str(x[0])[:8], "%s · %.0fs" % (str(x[1])[:60], float(x[2] or 0)))
+                 for x in (bg or []) if isinstance(x, (list, tuple)) and len(x) >= 2)
+    wm = ('<div style="text-align:right;color:#b9bfba;letter-spacing:3px;font-size:10px">'
+          'E-INK · 仿电子墨水印 · 无动效</div>')
+    return wm + "".join(_eink_box(k, b) for k, b in zip(EINK_SECTIONS, (s1, s2, s3)))
 
 # ---------------- 自检（离仓·离窗可跑：QT_QPA_PLATFORM=offscreen，不发模型请求） ----------------
 def selftest():
@@ -496,10 +647,40 @@ def selftest():
           "jam": "JAM" in jam_html("e"),
           "panel_tasks": "table" in panel_html("tasks", info and api("/api/tasks")),
           "panel_err": "JAM" in panel_html("tasks", {"err": "x"}),
-          "drawers": len(DRAWERS)}
+          "drawers": len(DRAWERS), "cut_steps": len(CUT_STEPS)}
+    seq, s = [], "idle"
+    for _ in range(len(_IDS) + 1):
+        s = cut_next(s); seq.append(s)
+    e = eink_html({"session": "abc12345", "gateway": {"enabled": True, "model": "x"},
+                   "solo": {"enabled": True}},
+                  {"tid": "task-1", "done": 2, "total": 5, "unfinished": 3, "eta": "1m",
+                   "intent": "示例意图", "rows": [{"id": "t1", "goal": "g", "status": "done", "skill": "s"}]},
+                  [("t9", "话语示例", 3.0)])
+    ok["cut_cycle"] = seq == _IDS[1:] + ["idle", "feed"]
+    ok["cut_progress"] = cut_progress("cut") == 0.75 and cut_progress("idle") == 0.0
+    ok["cut_tone"] = cut_tone("cut") == "stop" and cut_label("nope") == "nope"
+    ok["cut_mark"] = "裁纸段" in cut_mark(1)
+    ok["crt_colors"] = crt_colors()["fg"] == "#33ff66" and crt_colors()["bg"] == "#04070a"
+    ok["crt_scanlines"] = len(crt_scanlines(60, 3)) == 20 and crt_scanlines(0) == []
+    ok["crt_afterglow"] = (abs(crt_afterglow(0) - 1.0) < 1e-9 and crt_afterglow(260) == 0.5
+                           and crt_afterglow(520) < 0.26 and crt_afterglow("x") == 1.0)
+    ok["crt_cursor"] = crt_block_cursor(13) == 8 and crt_block_cursor(1) == 2
+    ok["qss_crt"] = 'QPlainTextEdit#cmd[crt="1"]' in q and "${" not in q
+    ok["qss_blade"] = all('QFrame#blade[st="%s"]' % k in q for k in ("feed", "clamp", "cut", "drop"))
+    ok["qss_eink"] = "QTextBrowser#eink{" in q
+    ok["eink_sections"] = list(EINK_SECTIONS) == ["会话信息", "任务表", "后台任务"]
+    ok["eink_html"] = ("<div" in e and all(x in e for x in EINK_SECTIONS) and "task-1" in e
+                       and "abc12345" in e and "话语示例" in e
+                       and not any(bad in e for bad in ("animation", "transition", "gradient", "@keyframes")))
+    ok["eink_empty"] = eink_html().count("（无）") >= 1
+    ok["eink_no_key"] = leaked(eink_html(info)) == "" if isinstance(info, dict) else True
     print("FAX_SELFTEST " + json.dumps(ok, ensure_ascii=False))
     return 0 if (ok["meta"] >= 30 and ok["qss_gradient"] and ok["qss_shapes"] and ok["line_html"]
-                 and ok["jam"] and ok["no_token_face"] and ok["page_bytes"] > 1000) else 1
+                 and ok["jam"] and ok["no_token_face"] and ok["page_bytes"] > 1000
+                 and ok["cut_cycle"] and ok["cut_progress"] and ok["cut_tone"] and ok["cut_mark"]
+                 and ok["crt_colors"] and ok["crt_scanlines"] and ok["crt_afterglow"] and ok["crt_cursor"]
+                 and ok["qss_crt"] and ok["qss_blade"] and ok["qss_eink"]
+                 and ok["eink_sections"] and ok["eink_html"] and ok["eink_empty"]) else 1
 
 if __name__ == "__main__":
     if "--selftest" in sys.argv:

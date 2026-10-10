@@ -1,5 +1,5 @@
 #!/bin/sh
-# sms-shell-gui launcher (GUI entry, POSIX): python sms-shell-gui.py (PyQt6 shell_qt.py + shell_qt_fax.py fax-console mirror (no token gate), PySide6 shell_gui.py fallback, no Qt -> sms-shell-tui); api or no python -> locate.py.
+# sms-shell-gui launcher (GUI entry, POSIX): python sms-shell-gui.py (PyQt6 shell_qt.py + shell_qt_fax.py fax-console mirror (no token gate) + batch39 three views: paper cutter CUT blade / CRT green-on-black feeder / E-INK 3-section panel, all in-process, no new port or process), PySide6 shell_gui.py fallback, no Qt -> sms-shell-tui); api or no python -> locate.py.
 D=$(dirname "$0")
 if [ "${1:-}" = "api" ]; then
   export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
