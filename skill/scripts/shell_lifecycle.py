@@ -8,7 +8,7 @@ CREATE_NO_WINDOW|SW_HIDE＝重启后子进程 GetConsoleWindow()==0 隐形，用
 restart＝通报→写旗标→落链→分离式拉起 bin/sms-shell-gui.py（图形入口·新窗；缺则 sms-shell-tui.py）→reclaim 清旧壳与 core 后台
 （含本进程，os._exit 硬退，杜绝新旧并存）；
 shutdown＝通报＋reclaim（收 HUD/TTS＋清所有壳与 core 后台）＋落链；
-request(action,why)＝大模型侧入口（exec 跑 `python -B shell_lifecycle.py request restart 原因`）：只写 <SMS_HOME>/shell/lifecycle.json，由壳在本轮数据流收口时经 run_pending() 自己执行——当前对话先把话说完、任务表先落盘，再重启；
+request(action,why)＝大模型侧入口（exec 跑 `python -B shell_lifecycle.py request restart 原因`）：只写 <SMS_HOME>/shell/lifecycle.json，由壳在本轮数据流收口时经 run_pending() 自己执行——当前对话先把话说完、任务总览先落盘，再重启；
 cmd(m,sms,on_line)＝手动入口（F1 菜单与 readline 兜底壳同径）：15 秒内连点两次才真做；
 resume(sms)＝重启后「继续执行任务」单一入口（回 (提示文案, 续跑话语或 None)·旗标一次性消费并留档；resume_hint/auto_resume 为委托它的兼容壳，不再二次消费旗标；开关 settings shell.auto_resume 默认开）。
 用法：python -B shell_lifecycle.py restart|shutdown|status|request <action> [原因]"""
@@ -407,7 +407,7 @@ def _is_shell():
         return True
     return any(pt in cl for pt in PATTERNS)
 def request(action, why="", sms=None):
-    """大模型侧入口：登记 restart/shutdown，本轮数据流收口处由壳自己执行（先说完话、先落任务表）。
+    """大模型侧入口：登记 restart/shutdown，本轮数据流收口处由壳自己执行（先说完话、先落任务总览）。
     批32 R4：回串带 lifecycle.json 绝对路径——写读同一 <SMS_HOME>/shell/lifecycle.json 可核对。"""
     sms = sms or resolve_home.ensure()
     r = cg.request(action, why, sms)
@@ -508,11 +508,11 @@ def resume(sms=None):
     except Exception:
         _LAST = ("已重启（上一实例退出）。", None); return _LAST
     if not un:
-        _LAST = ("已重启（上一实例退出·无未完成任务表）。", None); return _LAST
+        _LAST = ("已重启（上一实例退出·无未完成任务总览）。", None); return _LAST
     top = "；".join("%s（%d/%d）" % (t[-14:], d, n) for t, d, n in un[:3])
-    hint = "⟳ 重启完成：检测到未完成任务表 %d 张（%s）——%s" % (
+    hint = "⟳ 重启完成：检测到未完成任务总览 %d 张（%s）——%s" % (
         len(un), top, "本轮自动续跑（:config set shell.auto_resume false 可关）" if auto else "按 F12／输「继续任务」续跑")
-    _LAST = (hint, "继续任务（重启后自动续跑·见〔任务表〕未完成行）" if auto else None)
+    _LAST = (hint, "继续任务（重启后自动续跑·见〔任务总览〕未完成行）" if auto else None)
     return _LAST
 def resume_hint(sms=None):
     """兼容壳（旧入口·新代码请直接用 resume）：文案取 resume()，旗标已被 resume 消费过则复用留档，绝不二次消费。"""

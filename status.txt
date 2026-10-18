@@ -1,0 +1,23 @@
+skill/scripts/shell_qt.py       1838 L PARSE-OK 03:14:22
+skill/scripts/shell_qt_fax.py   1071 L PARSE-OK 03:12:58
+tests/test_shell_qt.py           712 L PARSE-OK 02:57:41
+tests/test_shell_qt_fax.py       475 L PARSE-OK 03:10:33
+BUILD: ez.hide=0 av.addWidget(ez)=0 psplit.addWidget(ez)=1 root.addWidget=2
+FAX rc=0
+  false=[]
+   roll_cycle=True
+QT rc=1
+  false=[]
+   eink_resident=True
+   eink_no_hide=True
+   eink_idx=0
+   no_bottom_strip=True
+   roll_ok=True
+   roll_cycle=True
+   roll_seen=['feed', 'print', 'advance', 'print', 'advance', 'tear', 'idle']
+   qactions=32
+   menu_items=32
+   palette_rows=156
+PYTEST rc=0
+  ........................................s..................              [100%]
+  58 passed, 1 skipped in 18.03s

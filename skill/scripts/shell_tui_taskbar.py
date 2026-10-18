@@ -66,7 +66,7 @@ class Taskbar:
             self.log_line(Text("▶ 停止旗标已清·当前任务继续推进", style="yellow")); return
         tid, dn, tot = un[-1]
         self.log_line(Text("▶ 续推计划表 %s（%d/%d）" % (tid[-14:], dn, tot), style="bold green"))
-        self.submit("继续推进任务表 " + tid + " 的未完成行")
+        self.submit("继续推进任务总览 " + tid + " 的未完成行")
 
     # ── 按钮条可见性：有计划表且未生成最终输出 ────────────
     def taskbar_refresh(self):

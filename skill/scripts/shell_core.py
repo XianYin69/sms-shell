@@ -88,7 +88,7 @@ def run_script(name, args):
     return (lambda p: (p.returncode and chain_error.hook("script", name, "rc=" + str(p.returncode) + " " + (p.stderr or p.stdout or "")[:200])) or (debug.enabled() and debug.log("exec " + name + " rc=" + str(p.returncode) + ("" if p.returncode == 0 and not p.stderr else " STDERR:" + (p.stderr or p.stdout or "")[:500])) or (p.stdout or p.stderr).strip() or "(无输出)"))(p)
 def _meta(m, a, on_line, st):
     if m == "dispatch":
-        import agent_tools as at; st("技能派发：" + a[0]) if len(a) > 1 else None; r = stop.guard(lambda: at.run_skill(a[0], " ".join(a[1:]))) if len(a) > 1 else "用法 :dispatch <技能id> <诉求>（技能对等对话派发·批23 各派发独立 conv·:skills 查清单）"; on_line("派发对话 " + a[0] + " 已形式收口·控制权回本对话（正文如上·⧉ 前缀·任务表未完行请继续推进或 :dispatch 重派）" if r.startswith(at.WRAP) else r); return None
+        import agent_tools as at; st("技能派发：" + a[0]) if len(a) > 1 else None; r = stop.guard(lambda: at.run_skill(a[0], " ".join(a[1:]))) if len(a) > 1 else "用法 :dispatch <技能id> <诉求>（技能对等对话派发·批23 各派发独立 conv·:skills 查清单）"; on_line("派发对话 " + a[0] + " 已形式收口·控制权回本对话（正文如上·⧉ 前缀·任务总览未完行请继续推进或 :dispatch 重派）" if r.startswith(at.WRAP) else r); return None
     if m == "sh": st("系统 shell"); on_line(stop.guard(lambda: sys_shells.run(" ".join(a), on_line=on_line)) if a and a[0] not in ("list", "select", "export") else (sys_shells.select(a[1]) if a and a[0] == "select" and len(a) > 1 else sys_shells.export() if a and a[0] == "export" else sys_shells.listtext())); return None
     if m in ("restart", "shutdown"): return __import__("shell_lifecycle").cmd(m, SMS, on_line)
     if m == "solo":

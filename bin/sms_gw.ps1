@@ -1,4 +1,4 @@
-﻿# sms_gw.ps1 — 原生数据流（零 python）：话语默认直达网关（SSE 解析见 sms_gw_http.ps1）＋压缩记忆前缀＋附图；网关未启用回退已装 agent CLI 流式；皆无执行器则拒绝并引导配置（批16 LLM 主导·不得空口作答）
+﻿# sms_gw.ps1 — 原生数据流（零 python）：话语经 DSM 信封直连 smsocket（/v1/dsm/chat·解析见 sms_gw_http.ps1）＋压缩记忆前缀＋附图；smsocket 未监听/DSM 未启用 → 显式报错不回退；网关未配置或 smsocket 不可用时回退已装 agent CLI 流式；皆无执行器则拒绝并引导配置（批16 LLM 主导·不得空口作答）
 $ADAPTERS = @{ claude = @{ bin = 'claude'; args = @('-p') }; codex = @{ bin = 'codex'; args = @('exec') }; cursor = @{ bin = 'cursor-agent'; args = @() }; kilocode = @{ bin = 'kilocode'; args = @('run') }; kilo = @{ bin = 'kilo'; args = @('run') }; aider = @{ bin = 'aider'; args = @('--message') } }
 $SYS = '你是 smsystem-suit（SMS）数据流中的主导决策者（批16 LLM 主导·脚本辅助）：纯知识问答/闲聊直接简短作答，不必先派子技能（不要提及 Qwen 客户端、Android 等无关软件）；需要动手执行/读写/派技能才据实操作，无法执行就如实说明——禁止空口声称已执行。用户话语含问题/故障/报错/检查/为什么＝诊断请求，需据实排查（可运行诊断命令）后给结论，禁止回「输入 help 查看表」式敷衍，禁止把历史记忆碎片当现行行为。问到 sms-shell/SMS 自身的设置·命令·提示词时：据实介绍内置面（help=元指令表；config=网关设置；配置存 <SMS_HOME>/config/config.json；对话经原生网关直连），不得编造不存在的功能。生成文件一律写入当前工作区的 tmp 子目录（SMS_TMP 环境变量，壳已自动创建），不得散落工作区根；大模型与技能配置文件直接读取 <SMS_HOME>/config 下的 config.json/skills.json，禁止复制一份到工作区；目标为工作区文件的 tmp 产物经用户审核后可经 :workspace diff <tmp文件> --to <目标> 预览、:workspace release <tmp文件> --to <目标> --yes 收编回工作区（须 :grant danger·用户当轮确认）。无法执行就明确拒绝并说明。本壳为最后兜底（零 python·无技能派发通道）：一般知识问答可直答但须简短并首行标注〔兜底直答·等效 general_answer 子技能〕；需动手执行/读写/派技能的诉求请用户改用终端壳 <目标>/sms-shell-tui(.cmd) 或图形壳 <目标>/sms-shell-gui(.cmd)。内部处理一律英语（思考·工具参数·草稿·语句精简），回答先以英语处理完成再译回用户话语所用语言、简短。'
 function Detected {
@@ -33,7 +33,7 @@ function Invoke-Ask($text, $sink) {
     $c = Cfg 'llm_gateway'
     $body = @{ model = [string]$c.model; messages = @(@{ role = 'system'; content = $SYS }, (UserMsg $text)); stream = $true; max_tokens = [int]$c.max_tokens }
     if ($null -ne $c.temperature) { $body.temperature = $c.temperature }; if ($null -ne $c.top_p) { $body.top_p = $c.top_p }; if ($null -ne $c.reasoning_effort) { $body.reasoning_effort = [string]$c.reasoning_effort }
-    try { $out = Stream-Gateway $body $sink } catch { $d = ''; try { $d = (New-Object IO.StreamReader -ArgumentList $_.Exception.Response.GetResponseStream()).ReadToEnd() } catch {}; Write-Line ('网关错误：' + $_.Exception.Message + ' ' + $d.Substring(0, [Math]::Min(200, $d.Length))) }
+    try { $out = Stream-Gateway $body $sink } catch { Write-Line ('DSM 网关错误：' + $_.Exception.Message) }
     Record 'tool' ('gateway:' + $c.model + '@' + $conv)
   } else {
     $sp = if ($ADAPTERS[$ag]) { $ADAPTERS[$ag] } else { (Cfg 'agent_cli').$ag }

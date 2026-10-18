@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+import inspect
 import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S = os.path.join(ROOT, "skill", "scripts")
@@ -106,9 +107,9 @@ def test_t8_crt_phosphor_math_and_qss():
 
 
 def test_t10_eink_three_sections_only():
-    """t10 墨水屏：三段固定＝会话信息／任务表／后台任务；低饱和灰白＋无动效＋仿电子墨水印。"""
+    """t10 墨水屏：三段固定＝会话信息／任务总览／后台任务；低饱和灰白＋无动效＋仿电子墨水印。"""
     fax = _local("shell_qt_fax")
-    assert list(fax.EINK_SECTIONS) == ["会话信息", "任务表", "后台任务"], "墨水屏只保三段"
+    assert list(fax.EINK_SECTIONS) == ["会话信息", "任务总览", "后台任务"], "墨水屏只保三段"
     h = fax.eink_html({"session": "sess1234", "gateway": {"enabled": True, "model": "m"},
                        "solo": {"enabled": True}},
                       {"tid": "task-7", "done": 2, "total": 5, "unfinished": 3, "eta": "1m",
@@ -208,7 +209,7 @@ def test_overlay_keeps_fax_pair():
                                        "skill", "scripts", "shell_qt_fax.py")), "镜像件须同时在壳层仓与核仓"
 
 
-# ---------------- 批40 零顶栏三区骨架（表 010-213903-130 镜像件侧覆盖） ----------------
+# ---------------- 批40 零顶栏＋批41 分屏骨架（表 010-213903-130／010-231707-890 镜像件侧覆盖） ----------------
 def test_fax_qss_covers_on_demand_layer():
     """样式表须补齐按需层且不再含 brand 横条选择器：ctlzone／palette／palList／palEdit／mouth 走纸态。"""
     fax = _local("shell_qt_fax")
@@ -242,13 +243,235 @@ def test_fax_selftest_gates_zero_topbar():
     src = _src(FAX, "")
     for need in ('ok["qss_topbar"]', 'ok["build_zero_topbar"]',
                  'and ok["qss_topbar"] and ok["build_zero_topbar"]',
-                 'and ok["assembly_no_process_face"] and ok["fw_batch41_keys"]) else 1',
                  'nb = "SMS-" + "FAX · GUI"', 'bs = "brand" + "Sub"',
-                 'pf = ("sub" + "process", "Q" + "Process", "soc" + "ket", "HTTP" + "Server",'):
+                 'pf = ("sub" + "process"'):
         assert need in src, "镜像件 selftest 缺零顶栏判据/自指拆分：" + need[:44]
+    # 放行式只锁「判据进了 rc 式」这一语义（不锁行尾邻接：后续批次增判据会让 ) else 1 移位＝脆锁）
     ret = src.split("return 0 if", 1)[1]
-    assert 'ok["qss_topbar"]' in ret and 'ok["build_zero_topbar"]' in ret and 'ok["fw_batch41_keys"]' in ret, \
-        "零顶栏与批41 分屏判据须进放行式（rc=0 才放行）"
+    for g in ("qss_topbar", "build_zero_topbar", "assembly_no_process_face", "fw_batch41_keys"):
+        assert 'ok["%s"]' % g in ret, "判据未进放行式（rc 不受它约束）：" + g
+    assert "else 1" in ret, "放行式须留 rc=1 拒绝支"
     seg = src.split("def selftest")[1]
     assert "SMS-FAX · GUI" not in seg.replace('nb = "SMS-" + "FAX · GUI"', ""), \
         "判据字面量须拆分，否则自指含被检串＝恒假阴（本批踩过）"
+
+
+# ---------------- 批41 上送稿口＋下左右分屏（表 010-231707-890 镜像件侧） ----------------
+def test_fax_qss_covers_split_preview_terminal():
+    """样式表须补齐批41 分屏／预览／终端三段选择器（QSplitter 手柄·纸墨预览底·行号栏·CRT 同族终端面）。"""
+    fax = _local("shell_qt_fax")
+    q = fax.qss(fax.css_vars())
+    for need in ("QSplitter#split", "QSplitter#psplit", "QSplitter#split::handle:horizontal",
+                 "QSplitter#psplit::handle:vertical", "QFrame#previewzone{", "QPlainTextEdit#preview{",
+                 "QLabel#lnr{", "QLineEdit#pvOpen{", "QFrame#termzone{", "QPlainTextEdit#term{",
+                 "QLineEdit#termIn{"):
+        assert need in q, "批41 样式缺失：" + need
+    assert "${" not in q and "%s" not in q, "样式表占位符未替换干净"
+    assert "qlineargradient" in q and "QLabel#" + "brand{" not in q, "仍须网页端渐变派生·不得回流 brand 横条"
+
+
+def test_fax_build_batch41_split_and_parts():
+    """装配真源＝镜像件 build()：上送稿口（第一位）＋QSplitter 左右分屏＋右栏两件；批38/39/40 键面逐字保留。"""
+    src = _src(FAX, "")
+    build = src.split("def build(win, ent):")[1].split("# ---------------- t6 裁纸刀")[0]
+    core = build.split('"""', 2)[-1]
+    code = core
+    assert build.count("_zone(") == 4, "功能区＝A 纸卷／B 送稿／D 预览／E 终端（实测 %d）" % build.count("_zone(")
+    for need in ('w["split"] = split', 'w["psplit"] = psplit', "split.addWidget(tray)",
+                 "split.addWidget(aside)", "av.addWidget(psplit, 1)", "psplit.addWidget(pvz)", "psplit.addWidget(tmz)",
+                 "setChildrenCollapsible(False)", "split.setSizes([760, 640])",
+                 "root.addWidget(split, 1)", 'w["feeder"] = feeder', "feeder.setMinimumHeight(96)"):
+        assert need in build, "批41 装配缺项：" + need[:40]
+    assert "root.addWidget(tray, 3)" not in build, "纸卷 A 不再直挂 root（已进分屏左格）"
+    for k in ("preview", "previewzone", "pv_open", "pv_stat", "pv_fold", "pv_src",
+              "term", "termzone", "term_in", "t_run", "t_fold", "t_paper", "t_clear", "t_stat"):
+        assert ('w["%s"]' % k) in build, "批41 fw 键缺：" + k
+    for keep in ('w["banner"]', 'w["roll"]', 'w["mouth"]', 'w["tear"]', 'w["blade"]', 'w["blade_tag"]',
+                 'w["blade_pos"]', 'w["eink"]', 'w["einkzone"]', 'w["drawer"]', 'w["dtitle"]',
+                 'w["dbody"]', 'w["btn_stop"]', 'w["btn_go"]', 'w["btn_all"]', 'w["btn_speak"]',
+                 'w["keys"]', 'w["ctlzone"]', 'w["ctlzone_btn"]'):
+        assert keep in build, "批38/39/40 键面须逐字保留：" + keep
+    assert 'w["lcd_" + k]' in build and 'w["led_" + nm]' in build, "LCD/LED 仍由循环产出（键名不变）"
+    assert "ctl.hide()" in code and "dr.hide()" in code and "ez.hide()" not in code, \
+        "控制面板／抽屉仍装配即 hide·C 墨水屏常驻右栏（批41 收尾不得 hide）"
+    assert '"① 送稿口 DOC FEEDER · B' in build and '"② 纸卷区 PAPER ROLL · A' in build, \
+        "区序须＝送稿口第一（编号与位次一致）"
+    assert "menuBar" not in src and "SMS-" + "FAX · GUI" not in src, "零顶栏口径不得回退"
+
+
+def test_fax_batch41_pure_math_single_source():
+    """轮转位次／预览取数／终端行分类算式＝镜像件真源（壳只接绘制与状态·不留两份口径）。"""
+    fax = _local("shell_qt_fax")
+    assert list(fax.VIEW_NAMES) == ["纸卷 A", "送稿 B", "墨水屏 C", "预览 D", "终端 E"]
+    assert [fax.view_next(i) for i in range(5)] == [1, 2, 3, 4, 0]
+    assert fax.view_next("x") == 0 and fax.view_next(-2) == 0 and fax.view_next(None) == 0
+    assert fax.view_name(3) == "预览 D" and fax.view_name(7) == "墨水屏 C", "轮转越界回绕"
+    r = fax.preview_text({"content": "a\nb\nc"})
+    assert r["lines"] == 3 and r["text"] == "a\nb\nc" and not r["fallback"]
+    assert fax.preview_text({})["fallback"] and fax.preview_text(None)["fallback"], "取不到须内置兜底"
+    lst = fax.preview_text({"files": [{"name": "a.py", "path": "C:/x/a.py", "size": 9, "type": "file"}]})
+    assert lst["lines"] == 1 and "a.py" in lst["text"] and not lst["fallback"]
+    assert fax.preview_text({"err": "越界", "content": "x"})["err"] == "越界", "err 须原样带回由壳侧打纸"
+    assert fax.term_line_kind("$ dir") == "sh" and fax.term_line_kind(":cmds") == "meta"
+    assert fax.term_line_kind("JAM 卡纸") == "err" and fax.term_line_kind("rc=2") == "err"
+    assert fax.term_line_kind("Traceback (most recent call last):") == "err"
+    assert fax.term_line_kind("plain") == "out" and fax.term_line_kind("") == "out"
+    assert fax.TERM_PROMPT == "$ "
+
+
+def test_fax_api_query_get_inprocess_only():
+    """批41 预览取数仍＝进程内 web_shell 同名 getter（query＝网页端 ?k=v 同义），POST 路一字未动。"""
+    import inspect
+    fax = _local("shell_qt_fax")
+    assert "query" in inspect.signature(fax.api).parameters, "api() 须带 query（/api/file?path=…）"
+    src = _src(FAX, "")
+    for p in ("/api/files", "/api/file", "/api/detail"):
+        assert p in src, "镜像件缺预览路径 " + p
+    wsp = os.path.join(os.path.dirname(S), "..", "SMS-core", "skill", "scripts", "web_shell.py")
+    if not os.path.isfile(wsp):
+        wsp = os.path.join(S, "web_shell.py")
+    if os.path.isfile(wsp):
+        ws = _src(wsp, "")
+        for fn in ("g_files", "g_file", "g_detail"):
+            assert ('"%s": "%s"' % ("/api/" + fn[2:], fn)) in src, \
+                "路径名须与 web_shell getter 同名：" + fn
+            assert ("def %s(" % fn) in ws, "网页端没有该 getter（口径漂移）：" + fn
+    for banned in ("HTTPServer", "sock" + "etserver", "serve_forever", "requests", "urllib", "check_token"):
+        assert banned not in src, "镜像件不得触碰服务端/密钥面：" + banned
+    assert "def preview_text(" in src and "FALLBACK_TEXT" in src, "预览兜底须内置（离仓仍可成图）"
+
+
+def test_fax_selftest_gates_batch41():
+    """镜像件 selftest 须把批41 判据并入放行式（rc=0 才放行·防只改视觉不进门禁）。"""
+    src = _src(FAX, "")
+    for need in ('ok["view_cycle5"]', 'ok["qss_split"]', 'ok["qss_preview"]', 'ok["qss_terminal"]',
+                 'ok["build_split_assembly"]', 'ok["build_preview_parts"]', 'ok["build_terminal_parts"]',
+                 'ok["build_feeder_first"]', 'ok["assembly_no_process_face"]', 'ok["fw_batch41_keys"]',
+                 'ok["api_query_get"]', 'ok["preview_helpers"]', 'ok["term_helpers"]',
+                 'and ok["view_cycle5"] and ok["qss_split"]', 'and ok["preview_helpers"] and ok["term_helpers"]'):
+        assert need in src, "镜像件 selftest 缺批41 判据/放行：" + need[:46]
+    seg = src.split("def selftest")[1]
+    tail = seg.split('print("FAX_SELFTEST')[1]
+    for g in ('ok["view_cycle5"]', 'ok["qss_split"]', 'ok["qss_preview"]', 'ok["qss_terminal"]',
+              'ok["build_split_assembly"]', 'ok["build_preview_parts"]', 'ok["build_terminal_parts"]',
+              'ok["build_feeder_first"]', 'ok["assembly_no_process_face"]', 'ok["fw_batch41_keys"]',
+              'ok["api_query_get"]', 'ok["preview_helpers"]', 'ok["term_helpers"]'):
+        assert g in tail, "批41 判据须进 return 放行式（rc=0 才放行）：" + g
+    assert seg.count('print("FAX_SELFTEST " + json') == 1, "镜像件自检输出行须唯一"
+
+
+# ---------------- 批41 分屏／预览／终端（镜像件纯算式与 QSS·表 010-230506-244） ----------------
+def test_fax_batch41_pure_math():
+    """批41 纯算式真源＝镜像件（壳只接绘制与状态）：五态轮转／预览收口／终端行分类，逐项可对。"""
+    fax = _local("shell_qt_fax")
+    assert list(fax.VIEW_NAMES) == ["纸卷 A", "送稿 B", "墨水屏 C", "预览 D", "终端 E"]
+    assert [fax.view_next(i) for i in range(5)] == [1, 2, 3, 4, 0], "轮转须成环回 0"
+    assert fax.view_next("x") == 0, "非法位次当首位起步"
+    assert fax.view_name(3) == "预览 D"
+    assert fax.preview_text({"content": "x\ny"})["lines"] == 2
+    assert fax.preview_text({"err": "没门"})["fallback"] is True, "取不到须内置兜底"
+    assert fax.preview_text({"files": [{"name": "a.py", "size": 3,
+                                        "type": "file"}]})["lines"] == 1, "文件列表收一行一件"
+    assert fax.term_line_kind("$ dir") == "sh", "命令回显＝提示符行"
+
+
+# ---------------- 批40 图形壳布局补齐（表 010-213457-793 行 t7·镜像件侧版式结构断言） ----------------
+def test_fax_build_batch40_top_input_bottom_split_layout():
+    """版式结构（取证＝build 源码段）：(a) 送稿口（输入 ent）装配在分屏之前＝上输入；
+    (b) 主分屏＝QSplitter＋水平方向；(c) splitter 至少 addWidget 两次，右列容器 aside 依次装 ctl→墨水屏→抽屉。"""
+    src = _src(FAX, "")
+    build = src.split("def build(win, ent):")[1].split("# ---------------- t6 裁纸刀")[0]
+    code = build.split('"""', 2)[-1]
+    rooty = re.findall(r"root\.addWidget\((\w+)", code)
+    assert 'feeder, zv = _zone("' in build and "送稿口 DOC FEEDER" in build, "(a) 输入区须存在（① 送稿口）"
+    assert code.index("root.addWidget(feeder)") < code.index("split = QSplitter(Qt.Orientation.Horizontal)"), \
+        "(a) 送稿口装配位次须在分屏之前＝输入在上"
+    assert rooty == ["feeder", "split"], "(a) root 只许两格＝上送稿口＋下分屏（实测 %s）" % rooty
+    assert "QSplitter" in code and "Qt.Orientation.Horizontal" in code, "(b) 主分屏须 QSplitter＋水平方向"
+    assert code.count("split.addWidget(") >= 2, "(b) splitter 须至少挂两个子件（左纸卷＋右列）"
+    assert "split.setChildrenCollapsible(False)" in code and "split.setSizes([760, 640])" in code, \
+        "(b) 分屏须防拖没＋左右初值"
+    assert "split.addWidget(tray)" in code and "split.addWidget(aside)" in code, "(c) 左＝纸卷 A·右＝aside 竖列"
+    for n, wg in (("ctl", "av.addWidget(ctl)"), ("drawer", "av.addWidget(dr)"), ("eink", "psplit.addWidget(ez)")):
+        assert wg in code, "(c) 右列容器缺按需件：" + n
+    assert code.index("av.addWidget(ctl)") < code.index("av.addWidget(dr)"), "(c) 按需次序须 ctl→抽屉"
+    assert "ez.hide()" not in code and "av.addWidget(ez)" not in code, \
+        "(c) C 常驻＝永不 hide／不回落按需层（批41 收尾）"
+    assert "av.addWidget(psplit, 1)" in code, "(c) 右列最上＝分屏两件（D 预览／E 终端）"
+    for h in ("ctl.hide()", "dr.hide()"):
+        assert h in code, "按需层须装配即 hide（C 除外）：" + h
+    assert build.count("_zone(") == 4, "常驻功能区仍＝A/B/D/E 四区（aside 不走 _zone·实测 %d）" % build.count("_zone(")
+
+
+def test_fax_selftest_gates_split_layout():
+    """镜像件 selftest 须把版式补齐当硬判据：ok["split_layout"] 取证＋split_layout_ok 并入放行式。"""
+    src = _src(FAX, "")
+    for need in ('ok["split_layout"] = {', '"top_input":', '"horizontal_splitter":', '"right_column":',
+                 '"fw_keyface":', 'ok["split_layout_ok"] = all(',
+                 'and ok["split_layout_ok"] and ok["assembly_no_process_face"]'):
+        assert need in src, "镜像件 selftest 缺版式判据：" + need[:46]
+    ret = src.split("return 0 if", 1)[1]
+    assert 'ok["split_layout_ok"]' in ret and "else 1" in ret, "split_layout_ok 未进放行式（rc 不受它约束）"
+
+
+# ---------------- 批41 收尾三处偏差（表 010-235956-984）镜像件侧 ----------------
+def test_b41close_fax_roll_math():
+    """走纸队列纯算式（与 CUT 同族）：六态含卡纸·成环·行程数值·渲染真源仍＝line_html。"""
+    fax = _local("shell_qt_fax")
+    assert [s0[0] for s0 in fax.ROLL_STEPS] == ["idle", "feed", "print", "advance", "tear", "jam"]
+    st, seen = "idle", []
+    for _ in range(5):
+        st = fax.roll_next(st, at_end=(len(seen) >= 3)); seen.append(st)
+    assert seen == ["feed", "print", "advance", "tear", "idle"], "走纸须成环：咬纸→打印→进给→撕纸→待机"
+    assert fax.roll_next("advance") == "print" and fax.roll_next("advance", at_end=True) == "tear"
+    assert fax.roll_next("idle", jam=True) == "jam" and fax.roll_next("jam") == "jam"
+    assert fax.roll_next("jam", cleared=True) == "print", "清纸＝续打同一行（恢复）"
+    assert fax.roll_next("bogus") == "feed" and fax.roll_next("print") == "advance"
+    assert fax.roll_progress("idle") == 0.0 and fax.roll_progress("tear") == 1.0
+    assert 0 < fax.roll_progress("print") < 1 and fax.roll_progress("jam") == 0.0
+    assert fax.roll_tone("jam") == "stop" and fax.roll_tone("advance") == "go"
+    assert fax.roll_should_jam(2) is False and fax.roll_should_jam(3) is True
+    m = fax.roll_mark(4, "print")
+    assert "第 4 条" in m and "<div" in m and "<b>" not in m
+    assert "animation" not in m and "transition" not in m
+    assert "line_html" in inspect.getsource(fax.roll_mark), "走纸印记不得复制第二份渲染真源"
+
+
+def test_b41close_fax_qss_and_resident():
+    """样式表＝走纸六态＋常驻墨水屏（实色无动效）＋墨水小标；门禁须齐并进 rc 放行式。"""
+    fax = _local("shell_qt_fax")
+    q = fax.qss(fax.css_vars())
+    for st in ("print", "advance", "tear", "jam"):
+        assert 'QFrame#mouth[st="%s"]' % st in q and 'QFrame#tear[st="%s"]' % st in q, "走纸态样式缺失：" + st
+    assert 'QFrame#einkzone[resident="1"]' in q and "QLabel#einkStat{" in q
+    assert "QLabel#rollTag[st=" in q and "QLabel#rollTag{" in q
+    assert "${" not in q and "@keyframes" not in q, "墨水屏面须实色无动效"
+    src = _src(FAX, "")
+    ret = src.split("return 0 if", 1)[1]
+    for g in ("roll_cycle", "roll_mark", "roll_tone", "roll_progress", "roll_should_jam",
+              "qss_roll", "qss_eink_resident", "eink_resident_right", "fw_roll_parts"):
+        assert 'ok["%s"]' % g in ret, "镜像件放行式缺收尾判据：" + g
+    build = src.split("def build(win, ent):")[1].split("# ---------------- t6 裁纸刀")[0]
+    code = build.split('"""', 2)[-1]
+    assert "psplit.addWidget(ez)" in code
+    assert code.index("psplit.addWidget(ez)") < code.index("psplit.addWidget(pvz)")
+    assert "ez.hide()" not in code and "av.addWidget(ez)" not in code, "C 常驻＝永不 hide／不回落按需层"
+
+
+def test_b41close_fax_eink_api_no_token():
+    """墨水屏数据面只取 /api/info ＋ /api/tasks（scrub 后无 token/指纹），三段仍只三段。"""
+    fax = _local("shell_qt_fax")
+    assert list(fax.EINK_SECTIONS) == ["会话信息", "任务总览", "后台任务"] and len(fax.EINK_SECTIONS) == 3
+    info = fax.scrub({"session": "abc12345", "token": "SECRET", "fingerprint": "fp",
+                      "gateway": {"enabled": True, "model": "m"}, "solo": {"enabled": True}})
+    tasks = fax.scrub({"tid": "task-9", "done": 1, "total": 3, "unfinished": 2, "eta": "2m",
+                       "intent": "收尾示例", "rows": [{"id": "t1", "goal": "g", "status": "running"}],
+                       "token": "SECRET"})
+    h = fax.eink_html(info, tasks, [("t7", "走纸示例话语", 3.0)])
+    assert fax.leaked(h) == "", "墨水屏 HTML 不得残留密钥面字段"
+    assert "SECRET" not in h
+    assert "task-9" in h and "走纸示例话语" in h and all(x in h for x in fax.EINK_SECTIONS)
+    assert h.count("border:1px solid #b9bfba") == 3, "e-ink 三段框须恰三个（不增段）"
+    assert not any(bad in h for bad in ("animation", "transition", "gradient", "@keyframes"))
+    for bad in ("HTTPServer", "sock" + "etserver", "serve_forever", "check_token", "requests", "urllib"):
+        assert bad not in _src(FAX, ""), "镜像件不得触碰服务端/密钥面：" + bad

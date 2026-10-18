@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -217,7 +217,7 @@ grid-template-areas:"tray" "feeder" "panel"}
         <div><span class="k">模式</span> <b id="s_mode">对话</b> <span class="k">网关</span> <b id="s_gw">-</b> <span class="k">模型</span> <b id="s_model">-</b></div>
         <div><span class="k">令牌</span> <b id="s_tok">-</b> <button class="key sm" style="padding:1px 6px" onclick="revealTok()">👁 显影</button> <button class="key sm" style="padding:1px 6px" onclick="copyTok2()">⧉</button></div>
         <div><span class="k">指纹</span> <b id="s_fpr">-</b></div>
-        <div><span class="k">任务表</span> <b id="s_task">无未完成</b></div>
+        <div><span class="k">任务总览</span> <b id="s_task">无未完成</b></div>
       </div></div>
       <div id="leds">
         <span class="led off" id="led_net"><i></i>线路</span>
@@ -362,7 +362,7 @@ const PAD=[["1",":cmds","命令"],["2",":skills","技能"],["3",":session list",
 function buildPad(){const p=$("pad");p.innerHTML="";
  PAD.forEach(([k,cmd,lab])=>{const b=document.createElement("button");b.className="key";
   b.innerHTML=k+"<small>"+lab+"</small>";b.title=cmd;b.onclick=()=>{setCmd(cmd+" ");print("拨号","键 "+k+" → "+cmd,"sys")};p.appendChild(b)})}
-const QUICK=[["速查",":help"],["命令表",":cmds"],["技能",":skills"],["派发",":dispatch "],["会话拓扑",":session overview"],["配置",":config status"],["权限",":perms"],["任务表",":plan ls"],["做梦",":dream status"],["QQ",":qq status"],["朗读",":tts "],["模式",":mode "]];
+const QUICK=[["速查",":help"],["命令表",":cmds"],["技能",":skills"],["派发",":dispatch "],["会话拓扑",":session overview"],["配置",":config status"],["权限",":perms"],["任务总览",":plan ls"],["做梦",":dream status"],["QQ",":qq status"],["朗读",":tts "],["模式",":mode "]];
 function buildQuick(){const q=$("quick");q.innerHTML="";
  QUICK.forEach(([l,c])=>{const b=document.createElement("button");b.className="key sm";b.textContent=l;b.title=c;
   b.onclick=()=>setCmd(c);q.appendChild(b)})}
@@ -406,7 +406,7 @@ function keys(){const el=$("cmd");
   if(ev.ctrlKey&&ev.shiftKey&&ev.key.toLowerCase()==="c"){ev.preventDefault();copyAll()}
   if(ev.key==="/"&&!/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)){ev.preventDefault();$("cmd").focus();setCmd("/")}})}
 function paintAC(){[...$("ac").children].forEach((e,i)=>e.className=i===ACI?"sel":"")}
-/* ---------- 任务表 / 走纸控制 ---------- */
+/* ---------- 任务总览 / 走纸控制 ---------- */
 function isDone(x){const v=String(x&&x.status||"").toLowerCase();return v==="done"||v==="完成"||v==="finished"}
 async function pollTasks(){const r=await api("/api/tasks");
  if(r.err){$("s_task").textContent="巡检不可用";return}
@@ -443,7 +443,7 @@ async function refreshDrawer(){if(DOPEN)openDrawer($("d_title").textContent,DOPE
 const DF={};
 /* ---------- 巡检 ---------- */
 async function pollAll(){await Promise.all([pollTasks(),pollQQ(),pollTTS(),pollDream(),pollSolo()]);
- print("系统","巡检完成：线路 "+(INFO?"已连通":"未连")+" · 任务表 "+(TASKS?TASKS.length:0)+" 行","sys")}
+ print("系统","巡检完成：线路 "+(INFO?"已连通":"未连")+" · 任务总览 "+(TASKS?TASKS.length:0)+" 行","sys")}
 async function pollQQ(){const r=await api("/api/qq");led("led_qq",r.err?"off":(r.enabled?"on":"off"))}
 async function pollTTS(){const r=await api("/api/tts");led("led_tts",r.err?"off":(r.enabled?"on":"off"))}
 async function pollDream(){const r=await api("/api/info");if(!r.err){INFO=r;led("led_dream",r.dream&&r.dream.enabled?"on":"off")}}
@@ -571,21 +571,21 @@ DF.sessions=async b=>{const r=await api("/api/sessions");
  [["新建会话",":session new "],["清单",":session list"],["仅看冲突",":session conflicts"]].forEach(([l,c])=>{
   const x=document.createElement("button");x.className="key sm";x.textContent=l;x.onclick=()=>setCmd(c);bar.appendChild(x)});
  b.appendChild(bar)};
-/* ---------- 面板：任务表（前台/后台） ---------- */
+/* ---------- 面板：任务总览（前台/后台） ---------- */
 DF.tasks=async b=>{const r=await api("/api/tasks");
- if(r.err){b.innerHTML="<div class='hint'>任务表不可用："+esc(r.err)+"</div>";return jam("任务表不可用")}
+ if(r.err){b.innerHTML="<div class='hint'>任务总览不可用："+esc(r.err)+"</div>";return jam("任务总览不可用")}
  const rows=r.rows||r.tasks||r.items||[];const done=rows.filter(x=>x.status==="done").length;
- b.innerHTML="<div class='hint'>任务表 "+esc(r.tid||r.id||"")+" · 进度 "+done+"/"+rows.length+" · 剩余约 "+esc(r.eta||"-")+"</div>";
+ b.innerHTML="<div class='hint'>任务总览 "+esc(r.tid||r.id||"")+" · 进度 "+done+"/"+rows.length+" · 剩余约 "+esc(r.eta||"-")+"</div>";
  const t=document.createElement("table");t.innerHTML="<tr><th>行</th><th>步骤</th><th>状态</th><th>通道</th><th>技能</th><th></th></tr>";
  rows.forEach(x=>{const tr=document.createElement("tr");
   tr.innerHTML="<td>"+esc(x.id||x.row||"-")+"</td><td>"+esc(x.title||x.step||x.text||"-")+"</td><td>"+esc(x.status||"-")+"</td><td>"+esc(x.lane||"fg")+"</td><td>"+esc(x.skill||"-")+"</td><td></td>";
   const td=tr.lastChild;
   ["done","running","pending"].forEach(st=>{const y=document.createElement("button");y.className="key sm";y.textContent=st;
    y.onclick=async()=>{const q=await api("/api/task/status",{row:x.id||x.row,status:st});
-    print("任务表",(x.id||x.row)+" → "+st+(q.err?"（"+q.err+"）":""),"sys");pollTasks()};td.appendChild(y)});
+    print("任务总览",(x.id||x.row)+" → "+st+(q.err?"（"+q.err+"）":""),"sys");pollTasks()};td.appendChild(y)});
   const lb=document.createElement("button");lb.className="key sm";lb.textContent=(x.lane==="bg"?"转前台":"转后台");
   lb.onclick=async()=>{const q=await api("/api/task/status",{row:x.id||x.row,lane:x.lane==="bg"?"fg":"bg"});
-   print("任务表",(x.id||x.row)+" lane → "+(x.lane==="bg"?"fg":"bg")+(q.err?"（"+q.err+"）":""),"sys");DF.tasks(b)};
+   print("任务总览",(x.id||x.row)+" lane → "+(x.lane==="bg"?"fg":"bg")+(q.err?"（"+q.err+"）":""),"sys");DF.tasks(b)};
   td.appendChild(lb);t.appendChild(tr)});
  b.appendChild(t)};
 /* ---------- 面板：计划任务 ---------- */
@@ -696,7 +696,7 @@ DF.path=async b=>{b.innerHTML="<div class='hint'>登记扫描根＋重建注册�
 function buildPanels(){const d=document.createElement("div");d.className="grp";d.innerHTML="<h4>数据面板 <s>GET /api/*</s></h4>";
  const k=document.createElement("div");k.className="keys";
  [["网关配置","config"],["做梦机制","config"],["链设置","config"],["模型元数据","models"],["网络","net"],["会话拓扑","sessions"],
-  ["任务表","tasks"],["计划任务","plans"],["权限·HUD","perms"],["文件·编辑器","files"],["工作区","ws"],["技能索引","skills"],
+  ["任务总览","tasks"],["计划任务","plans"],["权限·HUD","perms"],["文件·编辑器","files"],["工作区","ws"],["技能索引","skills"],
   ["详细细节","detail"],["界面模式","mode"],["QQ 推送","qq"],["系统","sys"]].forEach(([l,c])=>{
   const x=document.createElement("button");x.className="key sm";x.textContent=l;x.title="/api/"+c;x.onclick=()=>openDrawer(l,c);k.appendChild(x)});
  d.appendChild(k);$("f1").appendChild(d)}

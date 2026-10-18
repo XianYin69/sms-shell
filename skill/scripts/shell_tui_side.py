@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""shell_tui_side.py — sms-shell TUI 右半侧栏（左右分屏各 1/2·0.5s 自刷新·重数据 5s 节流）：当前工作区（SMS_WORKSPACE·真实目录或虚拟〔每对话开建口删〕＋登记数·F6 可切换）·数据根 SMS_HOME·技能源·启动 cwd 路径·本次对话修改的文件（从网关 $ exec 回显抽取脚本/文件路径＋图形化配置改动·去重末 7）·所在链与会话（解析「开新对话」id·本对话写入链＋会话拓扑〔sessions_view：session 按创建先后·◎当前·未完成行数·跨会话冲突监视——批23 新建会话＝新 session 非 conv〕·当前步骤类型＋简略说明（关键词映射）·界面模式（shell_tui_mode·查看/对话/直通·F7 切换）·对话一览 conv（shell_tui_sessions.overview：最近对话＝创建时间＋首句简略·批23 起每派发也一 conv）·任务表（批4 新增·shell_tui_tasks.rows 读 <SMS_HOME>/tasks/*.json——task 工具触发即自动出现·任务头含完成/总数与〔已完成〕/〔进行中〕·子任务行 ✓/▶/○/✗ 状态）。样式由主文件 CSS 控制。"""
+"""shell_tui_side.py — sms-shell TUI 右半侧栏（左右分屏各 1/2·0.5s 自刷新·重数据 5s 节流）：当前工作区（SMS_WORKSPACE·真实目录或虚拟〔每对话开建口删〕＋登记数·F6 可切换）·数据根 SMS_HOME·技能源·启动 cwd 路径·本次对话修改的文件（从网关 $ exec 回显抽取脚本/文件路径＋图形化配置改动·去重末 7）·所在链与会话（解析「开新对话」id·本对话写入链＋会话拓扑〔sessions_view：session 按创建先后·◎当前·未完成行数·跨会话冲突监视——批23 新建会话＝新 session 非 conv〕·当前步骤类型＋简略说明（关键词映射）·界面模式（shell_tui_mode·查看/对话/直通·F7 切换）·对话一览 conv（shell_tui_sessions.overview：最近对话＝创建时间＋首句简略·批23 起每派发也一 conv）·任务总览（批4 新增·shell_tui_tasks.rows 读 <SMS_HOME>/tasks/*.json——task 工具触发即自动出现·任务头含完成/总数与〔已完成〕/〔进行中〕·子任务行 ✓/▶/○/✗ 状态）。样式由主文件 CSS 控制。"""
 import os, re, time
 from rich.text import Text
 from textual.widgets import Static
@@ -83,7 +83,7 @@ class Side(Static):
         t.append("■ 当前步骤·类型\n", "bold yellow")
         t.append(cur + "\n", "bold cyan"); t.append(tag, "italic #cdd6f4")
         (tp := getattr(a, "task_prog", "")) and t.append("\n≡ " + tp + "（task_detail 实时进度）", "bold #cba6f7")
-        t.append("\n\n■ 任务表（task 工具触发自动创建·末3·✓完成 ▶进行 ○未完成 ✗失败）\n", "bold yellow")
+        t.append("\n\n■ 任务总览（task 工具触发自动创建·末3·✓完成 ▶进行 ○未完成 ✗失败）\n", "bold yellow")
         tk = shell_tui_tasks.rows(core.SMS)
         for line, sty in tk: t.append(line + "\n", sty)
         if not tk: t.append("（本次尚无 task——大模型调 task 工具拆分子任务后自动显示于此）\n", "dim")

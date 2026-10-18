@@ -12,18 +12,29 @@
 ④ 视图件三（批39）：t6 出纸末端「裁纸刀」（CUT_STEPS 五态推进·进程内 QTimer 走步·零新端口零新进程）、
    t8 送稿口 CRT 绿字黑底成像（crt_colors·crt_scanlines·crt_afterglow·crt_block_cursor 算式在此，逐帧绘制在
    shell_qt.Input 的 paintEvent·不改文本模型与键盘语义）、
-   t10 墨水屏消息面板（EINK_SECTIONS 只「会话信息／任务表／后台任务」三段·低饱和灰白·无动效·仿电子墨水印）——
+   t10 墨水屏消息面板（EINK_SECTIONS 只「会话信息／任务总览／后台任务」三段·低饱和灰白·无动效·仿电子墨水印）——
 ⑤ 装配件（批41 上送稿口＋下左右分屏）：build() 不装 brand 横条、shell_qt 不挂原生菜单栏——上＝B 送稿口
    （CRT 输入＋送稿键＋常用拨号·常驻第一位），其下 QSplitter#split 左右分屏＝左纸卷 A（出纸正文＋状态行
-   LCD 六格/LED 七灯＋mouth/tear/blade＋动作条）｜右 QSplitter#psplit（上预览 D·下终端 E·两件可切分可折叠），
-   C 墨水屏三段与按需控制面板 ctlzone（META 键阵·F1 六组·拨号盘）＋抽屉保持批40 语义（装配即 hide·Ctrl+M/Ctrl+I）；
+   LCD 六格/LED 七灯＋mouth/tear/blade＋动作条）｜右格 aside 竖列（QVBoxLayout）：上＝QSplitter#psplit（C 墨水屏·预览 D·终端 E·三件常驻不可折叠（childrenCollapsible=False）·可切分·Ctrl+V 五态轮转）、
+   下＝按需层依次装 ctlzone（META 键阵·F1 六组·拨号盘）→抽屉——保持批41 语义（装配即 hide·Ctrl+M）；
+   C 墨水屏＝批41 收尾升为 psplit 常驻第一格（永不 hide·Ctrl+I 只聚焦），底部条带撤销后提示迁 eink_stat 墨水小标，
+   走纸态由 rollTag 承载（roll_next 六态·与 blade 同谱）；
+   七灯 LED（线路／QQ／朗读／做梦／计划／裁纸／对外）＝本件 build() 造灯（网页端 #leds 同名 id·
+   裁纸为壳侧新增），壳侧 poll* 逐灯驱动——批46 灯数校平：造灯数＝驱动数＝7（selftest 门禁
+   led_driven／led_driven_n／led_built_n／led_parity），QQ 灯与网页端 pollQQ 同路走进程内 /api/qq
+   （g_qq·err＝off 不谎报已连·scrub 后无密钥面）；
+   造灯处＝build 内 LED 循环 L531（灯名与网页端 #leds 同，裁纸为壳侧新增）。
+   行号清单（本件·算式与版式真源）：常量 墨水屏三段 L827 / 五态视图名 L829 / 裁纸五态 L723 / 走纸六态 L751；
+   纯算式 roll_next L760 / roll_label L777 / view_next L831 / preview_text L694 / term_line_kind L712 / eink_html L852；
+   样式与键面 css_vars L83 / qss L195 / keys L163；数据桥：GET 路由表 L351 / api 进程内直调（query）L359；
+   装配 build 骨架 L493、C 常驻保底高度 L656；自检 L877。
    菜单职能＝命令面板（QDialog#palette＋QListWidget#palList·Ctrl+K）＋右键菜单。
-   fw 键面与批38/39/40 逐字兼容（banner/roll/lcd_*/led_*/blade*/eink*/btn_*/keys 全保留），批41 增
+   fw 键面与批38/39/40 逐字兼容（banner/roll/lcd_*/led_*/blade*/eink*/btn_*/keys 全保留），批41 增 feeder/tray/
    split/psplit/previewzone/preview/pv_open/pv_fold/pv_stat/termzone/term/term_in/t_run/t_fold/t_paper/t_clear/t_stat。
    视图轮转位次真源＝VIEW_NAMES 五态（纸卷 A／送稿 B／墨水屏 C／预览 D／终端 E）＋view_next 纯算式；
    预览取数收口＝preview_text（/api/file·/api/files·/api/detail 返回 → 文本＋行数＋是否兜底）、
    终端行分类＝term_line_kind（纯算式·壳侧按类上色）——两件的算式都在本件，壳只接绘制与状态。
-   页面没有这些 :root 变量时按内置兜底（css_vars 的 setdefault），网页端补同名变量即刻生效。   页面没有这些 :root 变量时按内置兜底（css_vars 的 setdefault），网页端补同名变量即刻生效。
+   页面没有这些 :root 变量时按内置兜底（css_vars 的 setdefault），网页端补同名变量即刻生效。
 自检：python -B shell_qt_fax.py --selftest（offscreen·解析＋样式＋数据桥＋出纸渲染＋三视图件，不发模型请求）"""
 import os, sys, re, json, time, inspect
 
@@ -131,7 +142,7 @@ _PAD_FB = [["1", ":cmds", "命令"], ["2", ":skills", "技能"], ["3", ":session
            ["*", ":help", "菜单"], ["0", ":agents", "agent"], ["#", ":mode", "模式"]]
 _QUICK_FB = [["速查", ":help"], ["命令表", ":cmds"], ["技能", ":skills"], ["派发", ":dispatch "],
              ["会话拓扑", ":session overview"], ["配置", ":config status"], ["权限", ":perms"],
-             ["任务表", ":plan ls"], ["做梦", ":dream status"], ["QQ", ":qq status"], ["朗读", ":tts "],
+             ["任务总览", ":plan ls"], ["做梦", ":dream status"], ["QQ", ":qq status"], ["朗读", ":tts "],
              ["模式", ":mode "]]
 _F1_FB = [["技能与派发", [["#menu_skill", "托管技能"], ["#menu_skill_index", "SKILL.md 索引"],
                           [":dispatch ", "技能真派发"], ["path:skill", "按路径加入"]]],
@@ -162,7 +173,7 @@ DRAWERS = {"#menu_skill": ("SKILL.md 技能索引", "skills"), "#menu_skill_inde
            "#menu_ws": ("工作区切换", "ws"), "#config": ("图形化配置", "config"),
            "#menu_perms": ("权限 · 工具 · HUD", "perms"), "#menu_mode": ("界面模式（查看/对话/直通）", "mode"),
            "#menu_sys": ("系统 shell 联动", "sys"), "#menu_qq": ("QQ 推送 · 入站监听", "qq"),
-           "#detail_win": ("详细细节（长输出留档）", "detail"), "#tasks": ("任务表", "tasks"),
+           "#detail_win": ("详细细节（长输出留档）", "detail"), "#tasks": ("任务总览", "tasks"),
            "#plans": ("计划任务", "plans"), "#chains": ("十二链", "chains"), "#bus": ("跨会话明细", "bus")}
 
 # ---------------- 网页端 CSS → QSS（渐变/圆角/描边对齐，阴影以描边近似） ----------------
@@ -186,7 +197,9 @@ def qss(v=None):
     chassis 机身 / zone 功能区 / grp·dial 分组 / lcd 屏 / led 灯条 / tray 口腔 / roll 米纸卷 /
     feeder·cmd 进纸器 / drawer 抽屉 / k·kacc·kwarn·kstop·kgo·ksm 实体键五态 /
     blade·bladeTag 裁纸刀（t6·[st=…] 五态刀条）/ einkzone·eink 墨水屏面板（t10·实色无动效）/
-    split·psplit 分屏（批41·左右主分屏＋右栏上下分屏）/ previewzone·preview·lnr 预览（行号栏自绘）/
+    split·psplit 分屏（批41·左右主分屏＋右栏三格＝常驻 C 墨水屏／D 预览／E 终端）/ previewzone·preview·lnr 预览/
+    einkzone[resident="1"]·einkStat 常驻墨水屏与墨水小标（批41 收尾·底部条带的迁移目的地）/
+    mouth·tear[st=print/advance/tear/jam]＋rollTag 走纸队列六态（与 blade 同谱·实色无动效）/
     termzone·term·termIn 内嵌终端（QProcess·无控制台窗口）/
     cmd[crt="1"] 送稿口 CRT 绿字黑底（t8·扫描线·余辉·块光标由 shell_qt.Input 逐帧绘，QSS 只管实色底）。"""
     from string import Template
@@ -218,9 +231,14 @@ def qss(v=None):
     )
     return Template("""
 QWidget#chassis{background:${chassis};border:1px solid ${edge};border-radius:14px}
+QFrame#aside{background:transparent;border:none}
 QLabel{background:transparent}
 QFrame#ctlzone{background:${grp};border:1px solid ${edge};border-radius:12px}
 QFrame#mouth[st="feed"],QFrame#tear[st="feed"]{background:${amber};border:1px solid #8a6a2a;border-radius:6px}
+QFrame#mouth[st="print"],QFrame#tear[st="print"]{background:${paper};border:1px solid #a9b6c4;border-radius:6px}
+QFrame#mouth[st="advance"],QFrame#tear[st="advance"]{background:${grn};border:1px solid #1d6b41;border-radius:6px}
+QFrame#mouth[st="tear"],QFrame#tear[st="tear"]{background:${blade};border:1px solid #5b697a;border-radius:6px}
+QFrame#mouth[st="jam"],QFrame#tear[st="jam"]{background:${red};border:1px solid #7c1414;border-radius:6px}
 QDialog#palette{background:${drawer}}
 QListWidget#palList{background:rgba(255,255,255,.86);color:${ink};border:1px solid #a9b6c4;
  border-radius:6px;font-size:13px;padding:4px;outline:none}
@@ -250,6 +268,13 @@ QLabel#bladeTag{color:#4c5a68;font-size:11px;letter-spacing:1px}
 QLabel#bladeTag[st="cut"]{color:${red};font-weight:bold}
 QLabel#bladeTag[st="drop"]{color:#1d6b41;font-weight:bold}
 QFrame#einkzone{background:${einkb};border:1px solid #b9bfba;border-radius:4px}
+QFrame#einkzone[resident="1"]{background:${einkb};border:2px solid #8f979a;border-radius:4px}
+QLabel#einkStat{color:#2f3639;background:#e2e6e2;border:1px solid #c4c9c4;border-radius:2px;
+ padding:2px 6px;font-size:11px;letter-spacing:.4px}
+QLabel#rollTag{color:#4c5a68;font-size:11px;letter-spacing:1px}
+QLabel#rollTag[st="print"]{color:${ink};font-weight:bold}
+QLabel#rollTag[st="advance"]{color:#1d6b41;font-weight:bold}
+QLabel#rollTag[st="jam"]{color:${red};font-weight:bold}
 QTextBrowser#eink{background:${einkb};color:${einkf};border:1px solid #c4c9c4;border-radius:2px;
  padding:6px 8px;font-size:12px}
 QFrame#lcd{background:${lcd};border:3px solid #7d8b9a;border-radius:9px}
@@ -470,11 +495,13 @@ def build(win, ent):
     blade/blade_tag/blade_pos/banner/lcd_*/led_*/ctlzone/ctlzone_btn/meta_grp/f1_grp/dial_keys/cmd/drawer/
     dtitle/dbody/btn_all/btn_speak/btn_stop/btn_go/eink/einkzone/keys），批41 增分屏与两件键：
     split（QSplitter 主分屏）/psplit（右栏上下分屏）/previewzone·preview·pv_open·pv_fold·pv_stat/
-    termzone·term·term_in·t_run·t_fold·t_paper·t_clear·t_stat。
+    termzone·term·term_in·t_run·t_fold·t_paper·t_clear·t_stat；批41 收尾再增 eink_stat 墨水小标＋roll_tag 走纸标签（走纸队列＝fax.roll_next 六态族·与 CUT 同谱·绘制与 QTimer 接线在 shell_qt.py）。
     上＝B 送稿口（CRT 输入 ent＋送稿键＋常用拨号·常驻第一位）
     下＝左右分屏：左纸卷 A（正文＋状态行 LCD 六格/LED 七灯＋mouth/tear/blade＋动作条）
-                右＝预览 D（代码/文件＋行号栏）上、终端 E（内嵌面板）下·两件可切分可折叠
-    按需层＝C 墨水屏三段＋控制面板 ctlzone（META／F1／拨号盘）＋抽屉——一律装配即 hide（Ctrl+I／Ctrl+M）。
+                右栏 psplit 竖列三格＝C 墨水屏（常驻第一格·Ctrl+I 只聚焦永不 hide）→D 预览（代码/文件＋行号栏）
+                →E 终端（内嵌面板）·三格常驻不可折叠（setChildrenCollapsible(False)）·可切分·Ctrl+V 五态轮转
+    下＝左右分屏 QSplitter#split：左＝A 纸卷区、右＝aside 竖列（上＝psplit 三格 C／D／E 常驻，下＝按需层）；
+    按需层＝控制面板 ctlzone（META／F1／拨号盘）＋抽屉——一律装配即 hide（Ctrl+M），
     顶部名牌横条与原生菜单栏仍不装（零顶栏＝命令面板 Ctrl+K＋右键菜单）。
     预览/终端控件类由壳侧注入（win.PREVIEW_CLS／win.TERM_CLS／win.TERM_IN_CLS），缺类回落 QPlainTextEdit／
     QLineEdit——装配只此一处，版式真源不落到壳文件。1280×720 可用：三件最小宽 430/300/300，
@@ -488,13 +515,13 @@ def build(win, ent):
     w["banner"] = QLabel("待机"); w["banner"].setObjectName("banner"); w["banner"].setFont(_f(11, False))
     hr.addWidget(w["banner"]); hr.addStretch(1)
     w["ctlzone_btn"] = key("▦ 控制面板 Ctrl+M", lambda: win.fax("ctl"), small=True,
-                           tip="META 键阵／F1 六组／拨号盘＝按需展开（默认收起让位三区）")
+                           tip="META 键阵／F1 六组／拨号盘＝按需展开（默认收起让位分屏骨架）")
     hr.addWidget(w["ctlzone_btn"])
     hr.addWidget(key("⌘ 命令面板 Ctrl+K", lambda: win.fax("palette"), small=True, style="acc",
                      tip="原顶栏菜单全量条目在此过滤唤出（出口同实体键）"))
     lcd = QFrame(); lcd.setObjectName("lcd"); lg = QGridLayout(lcd)
     lg.setContentsMargins(9, 5, 9, 5); lg.setHorizontalSpacing(8); lg.setVerticalSpacing(1)
-    for i, k in enumerate(("会话", "模式", "网关", "线路", "任务表", "状态")):
+    for i, k in enumerate(("会话", "模式", "网关", "线路", "任务总览", "状态")):
         a = QLabel(k); a.setObjectName("lcdKey"); a.setFont(_f(11)); r, c = divmod(i, 3)
         b = QLabel("-"); b.setObjectName("lcdVal"); b.setFont(_f(11, True, True))
         lg.addWidget(a, r, c * 2); lg.addWidget(b, r, c * 2 + 1)
@@ -516,12 +543,15 @@ def build(win, ent):
     w["blade_tag"] = QLabel(cut_label("idle")); w["blade_tag"].setObjectName("bladeTag")
     w["blade_tag"].setFont(_f(11, False)); bt.addWidget(w["blade_tag"])
     w["blade_pos"] = QLabel("行程 0%"); w["blade_pos"].setObjectName("hint")
-    w["blade_pos"].setFont(_f(10, False)); bt.addWidget(w["blade_pos"]); bt.addStretch(1)
+    w["blade_pos"].setFont(_f(10, False)); bt.addWidget(w["blade_pos"])
+    w["roll_tag"] = QLabel(roll_label("idle")); w["roll_tag"].setObjectName("rollTag")
+    w["roll_tag"].setFont(_f(11, False)); bt.addWidget(w["roll_tag"]); bt.addStretch(1)
     br = _row(); tv.addLayout(br)
     for lab, fn in (("⧉ 复制输出", "copyAll"), ("⤓ 下载 .txt", "dl"), ("✂ 撕纸清屏", "tear"),
-                    ("✂ 裁纸 CUT", "cut"), ("▤ 墨水屏 E-INK", "eink"), ("⌘ 命令面板", "palette")):
+                    ("✂ 裁纸 CUT", "cut"), ("▤ 墨水屏 E-INK", "eink"), ("⎈ 走纸 ROLL", "roll"),
+                    ("⌘ 命令面板", "palette")):
         br.addWidget(key(lab, lambda _f_=fn: win.fax(_f_), tip="网页端同名动作·本机操作"))
-    h = QLabel("右键＝机身菜单 · Ctrl+Shift+C＝复制全部"); h.setObjectName("hint")
+    h = QLabel("右键＝机身菜单 · Ctrl+Shift+C＝复制全部 · Ctrl+V＝五视图轮转"); h.setObjectName("hint")
     h.setFont(_f(11, False)); br.addWidget(h); br.addStretch(1)
     tray.setMinimumWidth(430); w["tray"] = tray   # 批41：纸卷 A 进主分屏左格（不再直挂 root）
 
@@ -568,19 +598,22 @@ def build(win, ent):
     qh = _row(5); zv.addLayout(qh)
     ql = QLabel("常用拨号"); ql.setObjectName("quickLbl"); qh.addWidget(ql)
     for lab, c in QUICK_: qh.addWidget(key(lab, lambda _c=c: win.feed(_c), small=True, tip=str(c).strip()))
-    qh.addStretch(1); feeder.setMinimumHeight(96); root.addWidget(feeder)   # 批41：B 送稿口常驻第一位
+    qh.addStretch(1); feeder.setMinimumHeight(96); feeder.setMinimumWidth(320)
+    root.addWidget(feeder)   # 批41：B 送稿口常驻第一位
     w["feeder"] = feeder
 
     # ---------------- 批41 右栏：预览 D（代码/文件＋行号栏）· 终端 E（内嵌面板）----------------
     # 控件类由壳侧注入（win.PREVIEW_CLS／win.TERM_CLS／win.TERM_IN_CLS），缺类回落基件＝装配只此一处；
     # 进程/取数一律在壳侧件内（本装配体不碰子进程面·门禁 assembly_no_process_face 扫此段）。
-    pvz, pvv = _zone("③ 预览 PREVIEW · D（右上）", "代码/文件＋行号栏 · 数据一律进程内取数 /api/files · /api/file · /api/detail（无 HTTP·无 token）")
+    pvz, pvv = _zone("③ 预览 PREVIEW · D（右上）· 行号栏自绘", "")
+    pvz.setToolTip("数据一律进程内取数 /api/files · /api/file · /api/detail（无 HTTP·无 token）")
     pv_in = QLineEdit(); pv_in.setObjectName("pvOpen")
     pv_in.setPlaceholderText("路径 / 文件名 → Enter＝进程内取文预览（绝不新建 HTTP·绝不读 token）")
     pvv.addWidget(pv_in)
     pv = (getattr(win, "PREVIEW_CLS", None) or QPlainTextEdit)(win)
-    pv.setObjectName("preview"); pv.setReadOnly(True); pv.setFont(_f(12)); pv.setMinimumWidth(300)
-    pvv.addWidget(pv, 1)
+    pv.setObjectName("preview"); pv.setReadOnly(True); pv.setFont(_f(12)); pv.setMinimumWidth(220)
+    pvz.setMinimumWidth(300)
+    pv.setMinimumHeight(80); pvv.addWidget(pv, 1)
     pv_stat = QLabel("预览未取数（缺省＝/api/detail 长输出留档）"); pv_stat.setObjectName("hint")
     pv_stat.setFont(_f(10, False)); pvv.addWidget(pv_stat)
     pr1 = _row(8); pvv.addLayout(pr1)
@@ -591,10 +624,11 @@ def build(win, ent):
     pr1.addWidget(w["pv_fold"]); pr1.addWidget(w["pv_src"]); pr1.addStretch(1)
     w["previewzone"] = pvz; w["preview"] = pv; w["pv_open"] = pv_in; w["pv_stat"] = pv_stat
 
-    tmz, tmv = _zone("④ 终端 TERMINAL · E（右下）", "内嵌终端面板（无控制台窗口·随窗口收净）· `!` 与内置命令同 TUI · 路由仍 shell_core.handle")
+    tmz, tmv = _zone("④ 终端 TERMINAL · E（右下）· 无控制台窗口", "")
+    tmz.setToolTip("随窗口 closeEvent 收净（不留孤儿）· `!` 与内置命令同 TUI · 路由仍 shell_core.handle")
     tm = (getattr(win, "TERM_CLS", None) or QPlainTextEdit)(win)
-    tm.setObjectName("term"); tm.setReadOnly(True); tm.setFont(_f(12)); tm.setMinimumWidth(300)
-    tmv.addWidget(tm, 1)
+    tm.setObjectName("term"); tm.setReadOnly(True); tm.setFont(_f(12)); tm.setMinimumWidth(220)
+    tm.setMinimumHeight(80); tmv.addWidget(tm, 1)
     pr2 = _row(6)
     ti = (getattr(win, "TERM_IN_CLS", None) or QLineEdit)(tmz)
     ti.setObjectName("termIn")
@@ -609,25 +643,34 @@ def build(win, ent):
     t_stat = QLabel("终端待机（无在跑进程）"); t_stat.setObjectName("hint"); t_stat.setFont(_f(10, False))
     tmv.addWidget(t_stat)
     tmz.setMinimumWidth(300); w["termzone"] = tmz; w["term"] = tm; w["term_in"] = ti; w["t_stat"] = t_stat
-
-    psplit = QSplitter(Qt.Orientation.Vertical); psplit.setObjectName("psplit")
-    psplit.addWidget(pvz); psplit.addWidget(tmz)
-    psplit.setChildrenCollapsible(False); psplit.setSizes([420, 280])
-    split = QSplitter(Qt.Orientation.Horizontal); split.setObjectName("split")
-    split.addWidget(tray); split.addWidget(psplit)
-    split.setChildrenCollapsible(False); split.setStretchFactor(0, 3); split.setStretchFactor(1, 2)
-    split.setSizes([760, 640])          # 1280×720：左≥430·右≥300×2 可用
-    w["split"] = split; w["psplit"] = psplit
-    root.addWidget(split, 1)
-    root.addWidget(ctl)                  # 按需展开时排在分屏下方（默认 hide）
-
-    ez = QFrame(); ez.setObjectName("einkzone"); w["einkzone"] = ez
+    # ---- 墨水屏消息面板 C（批41 口径：常驻： psplit 第一格·psplit 依次 C→D→E·常驻不收起·Ctrl+I 聚焦） ----
+    ez = QFrame(); ez.setObjectName("einkzone"); ez.setProperty("resident", "1"); w["einkzone"] = ez
     zv2 = QVBoxLayout(ez); zv2.setContentsMargins(12, 6, 12, 8); zv2.setSpacing(4)
-    et = QLabel("③ 墨水屏 E-INK · C（只三段：会话信息／任务表／后台任务 · 无动效 · Ctrl+I 展开）")
+    et = QLabel("▤ 墨水屏消息面板 · C（常驻右栏上格 · 只三段：会话信息／任务总览／后台任务 · 无动效 · Ctrl+I 聚焦）")
     et.setObjectName("ztitle"); et.setFont(_f(11, False, True)); zv2.addWidget(et)
+    est = QLabel(""); est.setObjectName("einkStat"); est.setFont(_f(10, False))
+    est.setTextFormat(Qt.TextFormat.PlainText); est.setWordWrap(True)
+    zv2.addWidget(est); w["eink_stat"] = est          # 墨水小标＝原底部条带提示的迁移目的地
     w["eink"] = QTextBrowser(); w["eink"].setObjectName("eink"); w["eink"].setFont(_f(12, False))
     w["eink"].setMinimumHeight(118); zv2.addWidget(w["eink"])
-    ez.hide(); root.addWidget(ez)
+    ez.setMinimumHeight(150)      # 常驻保底高度（批41 收尾：C 进 psplit 第一格·永不 hide·Ctrl+I 只聚焦）
+    psplit = QSplitter(Qt.Orientation.Vertical); psplit.setObjectName("psplit")
+    psplit.addWidget(ez); psplit.addWidget(pvz); psplit.addWidget(tmz)
+    psplit.setChildrenCollapsible(False); psplit.setSizes([300, 420, 280])   # psplit＝三件 C 墨水屏／D 预览／E 终端
+    # 批40 版式补齐：split 右格＝竖向容器 aside（QVBoxLayout）——上＝分屏三件 psplit（C 墨水屏／D 预览／E 终端），
+    # 下＝按需层依次 ctlzone→抽屉（二者装配即 hide，不再直接挂 root）；
+    # root 只留 送稿口＋分屏 两格＝上输入下左右分屏·无底部条带
+    aside = QFrame(); aside.setObjectName("aside"); w["aside"] = aside
+    av = QVBoxLayout(aside); av.setContentsMargins(0, 0, 0, 0); av.setSpacing(7)
+    av.addWidget(psplit, 1)
+    split = QSplitter(Qt.Orientation.Horizontal); split.setObjectName("split")
+    split.addWidget(tray); split.addWidget(aside)
+    split.setChildrenCollapsible(False); split.setStretchFactor(0, 3); split.setStretchFactor(1, 2)
+    split.setSizes([760, 640])          # 1280×720：左≥430·右≥300×2 可用
+    w["split"] = split; w["psplit"] = psplit; w["aside"] = aside
+    root.addWidget(split, 1)
+    av.addWidget(ctl)                   # 按需层①＝控制面板（装配即 hide·Ctrl+M）
+
 
     dr = QFrame(); dr.setObjectName("drawer"); w["drawer"] = dr; dvl = QVBoxLayout(dr)
     dvl.setContentsMargins(12, 9, 12, 11); dvl.setSpacing(6)
@@ -637,7 +680,7 @@ def build(win, ent):
     dvl.addLayout(dh); dvl.addWidget(w["dtitle"])
     w["dbody"] = QTextBrowser(); w["dbody"].setObjectName("drawerBody"); w["dbody"].setFont(_f(12))
     w["dbody"].setMinimumHeight(150); dvl.addWidget(w["dbody"])
-    dr.hide(); root.addWidget(dr)
+    dr.hide(); av.addWidget(dr)
     w["keys"] = (META_, METAD_, PAD_, QUICK_, F1_)
     return w
 
@@ -704,6 +747,54 @@ def cut_mark(n=1):
     return ('<div style="margin:2px 0 8px;letter-spacing:2px;color:#5b697a;font-size:11px">'
             '✂ ───── 裁纸段 %d ─────</div>' % int(n))
 
+# ---------------- 批41 收尾 走纸队列（逐条打印推进·与 CUT 同族：算式在此，绘制与 QTimer 接线在 shell_qt.py） ----------------
+ROLL_STEPS = (("idle", "走纸待机 ROLL IDLE", ""),
+              ("feed", "纸张咬入 ROLL FEED", "warn"),
+              ("print", "逐行打印 PRINT", ""),
+              ("advance", "行进给 ADVANCE", "go"),
+              ("tear", "撕纸线 TEAR LINE", "warn"),
+              ("jam", "卡纸 JAM", "stop"))
+_RIDS = [s[0] for s in ROLL_STEPS]
+ROLL_MAX_STRIKE = 3        # 同一行连续三次进给不到＝卡纸（判据归纯算式，壳只照做）
+
+def roll_next(state="idle", at_end=False, jam=False, cleared=False):
+    """走纸态推进（纯函数·一次一步）：idle→feed→print→advance→(tear→idle | print)。
+    at_end＝本轮队列取空：advance 后打撕纸线（tear）再回 idle；未到末端则 advance→print 逐条循环。
+    jam＝本行进给受阻（累计三次仍受阻＝进 jam）；cleared＝jam 态人工清纸→回 print 续打同一行。
+    非法值当 idle 起步；tear 是唯一出口（除 jam 外不经 tear 不回 idle）。"""
+    if state not in _RIDS:
+        state = "idle"
+    if state == "jam":
+        return "print" if cleared else "jam"
+    if jam:
+        return "jam"
+    if state == "idle": return "feed"
+    if state == "feed": return "print"
+    if state == "print": return "advance"
+    if state == "advance": return "tear" if at_end else "print"
+    return "idle"
+
+def roll_label(state):
+    return next((lab for k, lab, _t in ROLL_STEPS if k == state), str(state))
+
+def roll_tone(state):
+    return next((t for k, _l, t in ROLL_STEPS if k == state), "")
+
+ROLL_PATH = [k for k in _RIDS if k != "jam"]   # 行进序列（jam 不在行程上·与 cut_progress 同谱只算推进）
+
+def roll_progress(state):
+    """走纸行程 0.0→1.0（idle=0·tear=1）——纸面推进数值口径；jam/非法值＝0。"""
+    return 0.0 if state not in ROLL_PATH else round(ROLL_PATH.index(state) / (len(ROLL_PATH) - 1.0), 3)
+
+def roll_mark(n=1, state="print"):
+    """走纸印记（纸面一行·仿进给刻度）：HTML 仍由 line_html 出（渲染真源不复制第二份）。"""
+    return line_html("走纸", "第 %d 条·%s（进给 %d%%）" %
+                     (int(n), roll_label(state), round(roll_progress(state) * 100)), "sys")
+
+def roll_should_jam(strike=0, max_strike=ROLL_MAX_STRIKE):
+    """卡纸判据（纯算式）：同一行进给受阻累计达上限即卡纸（与网页端 jam 的「错误/超时/停止」同档）。"""
+    return bool(int(strike or 0) >= int(max_strike))
+
 # ---------------- t8 CRT 送稿口（绿字黑底·扫描线叠加·余辉衰减·块光标闪烁：算式在此，绘制在 shell_qt.Input） ----------------
 CRT_DEFAULT = dict(fg="#33ff66", bg="#04070a", dim="#12401f", glow="#0a2a13")
 
@@ -731,9 +822,9 @@ def crt_afterglow(age_ms, half=260.0):
 def crt_block_cursor(px):
     """块光标宽度（≈0.62 字宽·下限 2 像素），配闪烁＝CRT 方块光标。"""
     return max(2, int(round(float(px) * 0.62)))
+# ---------------- t10 墨水屏消息面板（E-INK：只此三段·低饱和灰白·无动效·仿电子墨水印） ---------------- ----------------
 
-# ---------------- t10 墨水屏消息面板（E-INK：只此三段·低饱和灰白·无动效·仿电子墨水印） ----------------
-EINK_SECTIONS = ("会话信息", "任务表", "后台任务")
+EINK_SECTIONS = ("会话信息", "任务总览", "后台任务")
 # 视图轮转真源（批41 五态·shell_qt.viewToggle 只按此排布，判据不留两份口径）
 VIEW_NAMES = ("纸卷 A", "送稿 B", "墨水屏 C", "预览 D", "终端 E")
 
@@ -759,7 +850,7 @@ def _eink_row(k, v):
             '%s</span> %s</div>' % (_esc(k), _esc(v)))
 
 def eink_html(info=None, tasks=None, bg=None):
-    """三段固定＝会话信息／任务表／后台任务（其余面板一概不上墨水屏）；
+    """三段固定＝会话信息／任务总览／后台任务（其余面板一概不上墨水屏）；
     info·tasks＝/api/info 与 /api/tasks 的 scrub 结果，bg＝进程内〔在跑/排队〕清单 [(tid, 话语, 秒)]。
     只用实色＋1px 线（无渐变·无动画）＝仿电子墨水印刷；缺项显「（无）」，不静默。"""
     i, t = info or {}, tasks or {}
@@ -826,7 +917,7 @@ def selftest():
     ok["qss_crt"] = 'QPlainTextEdit#cmd[crt="1"]' in q and "${" not in q
     ok["qss_blade"] = all('QFrame#blade[st="%s"]' % k in q for k in ("feed", "clamp", "cut", "drop"))
     ok["qss_eink"] = "QTextBrowser#eink{" in q
-    ok["eink_sections"] = list(EINK_SECTIONS) == ["会话信息", "任务表", "后台任务"]
+    ok["eink_sections"] = list(EINK_SECTIONS) == ["会话信息", "任务总览", "后台任务"]
     ok["eink_html"] = ("<div" in e and all(x in e for x in EINK_SECTIONS) and "task-1" in e
                        and "abc12345" in e and "话语示例" in e
                        and not any(bad in e for bad in ("animation", "transition", "gradient", "@keyframes")))
@@ -856,8 +947,14 @@ def selftest():
     ok["qss_terminal"] = ("QPlainTextEdit#term{" in q and "QLineEdit#termIn{" in q
                           and "QFrame#termzone{" in q)
     ok["build_split_assembly"] = ('w["split"] = split' in seg_code and 'w["psplit"] = psplit' in seg_code
-                                  and "split.addWidget(tray)" in seg_code and "split.addWidget(psplit)" in seg_code
+                                  and 'w["aside"] = aside' in seg_code
+                                  and "split.addWidget(tray)" in seg_code and "split.addWidget(aside)" in seg_code
                                   and "psplit.addWidget(pvz)" in seg_code and "psplit.addWidget(tmz)" in seg_code
+                                  and "psplit.addWidget(ez)" in seg_code
+                                  and 'ez.setProperty("resident", "1")' in seg_code
+                                  and "av.addWidget(ez)" not in seg_code and "ez.hide()" not in seg_code
+                                  and 'w["eink_stat"] = est' in seg_code
+                                  and "av.addWidget(psplit, 1)" in seg_code
                                   and "setChildrenCollapsible(False)" in seg_code
                                   and "split.setSizes([760, 640])" in seg_code
                                   and "root.addWidget(split, 1)" in seg_code)
@@ -870,9 +967,67 @@ def selftest():
                                   and 'w["t_clear"]' in seg_code and 'w["t_stat"]' in seg_code)
     ok["build_feeder_first"] = ('"① 送稿口 DOC FEEDER · B' in seg and '"② 纸卷区 PAPER ROLL · A' in seg
                                 and '"③ 预览 PREVIEW · D' in seg and '"④ 终端 TERMINAL · E' in seg
+                                and '"\u25a4 墨水屏消息面板 \u00b7 C\uff08\u5e38\u9a7b\u53f3\u680f\u4e0a\u683c' in seg
                                 and seg_code.index("root.addWidget(feeder)") < seg_code.index("root.addWidget(split, 1)")
                                 and "root.addWidget(tray, 3)" not in seg_code
-                                and "ctl.hide()" in seg_code and "ez.hide()" in seg_code and "dr.hide()" in seg_code)
+                                and "ctl.hide()" in seg_code and "dr.hide()" in seg_code
+                                and "ez.hide()" not in seg_code and "psplit.addWidget(ez)" in seg_code
+                                and "av.addWidget(ez)" not in seg_code and "dr.hide()" in seg_code)
+    ok["split_layout"] = {
+        "top_input": ("root.addWidget(feeder)" in seg_code and "root.addWidget(split, 1)" in seg_code
+                      and seg_code.index("root.addWidget(feeder)") < seg_code.index("root.addWidget(split, 1)")
+                      and re.findall(r"root\.addWidget\((\w+)", seg_code) == ["feeder", "split"]
+                      and seg_code.index("feeder, zv = _zone(") < seg_code.index("split = QSplitter")),
+        "horizontal_splitter": ("QSplitter" in seg_code and "Qt.Orientation.Horizontal" in seg_code
+                                and "split.addWidget(tray)" in seg_code and "split.addWidget(aside)" in seg_code
+                                and "split.setChildrenCollapsible(False)" in seg_code
+                                and "split.setSizes([760, 640])" in seg_code),
+        "right_column": ("av.addWidget(ctl)" in seg_code and "av.addWidget(dr)" in seg_code
+                         and 0 <= seg_code.index("av.addWidget(psplit, 1)")
+                         < seg_code.index("av.addWidget(ctl)") < seg_code.index("av.addWidget(dr)")
+                         and "psplit.addWidget(ez)" in seg_code
+                         and "ez.hide()" not in seg_code and "av.addWidget(ez)" not in seg_code),
+        "fw_keyface": all(('w["%s"]' % k) in seg for k in
+                          ("banner", "roll", "mouth", "tear", "blade", "blade_tag", "blade_pos",
+                           "ctlzone", "ctlzone_btn", "drawer", "dtitle", "dbody", "btn_all", "btn_speak",
+                           "btn_stop", "btn_go", "eink", "einkzone", "keys", "dial_keys", "meta_grp",
+                           "f1_grp", "split", "psplit", "aside", "feeder")),
+        "on_demand_hidden": ("ctl.hide()" in seg_code and "dr.hide()" in seg_code
+                             and "ez.hide()" not in seg_code)}
+    ok["split_layout_ok"] = all(bool(x) for x in ok["split_layout"].values())
+    rseq, s2 = [], "idle"
+    for _ in range(5):
+        s2 = roll_next(s2, at_end=(len(rseq) >= 3)); rseq.append(s2)
+    ok["roll_cycle"] = (rseq == ["feed", "print", "advance", "tear", "idle"]
+                        and roll_next("idle", jam=True) == "jam"
+                        and roll_next("jam") == "jam" and roll_next("jam", cleared=True) == "print"
+                        and roll_next("nope") == "feed"
+                        and [roll_next("advance", at_end=bool(i % 2)) for i in range(4)] ==
+                            ["print", "tear", "print", "tear"]
+                        and [s[0] for s in ROLL_STEPS] == ["idle", "feed", "print", "advance", "tear", "jam"]
+                        and roll_next("print") == "advance" and "tear" in _RIDS)
+    ok["roll_mark"] = ("<div" in roll_mark(2, "print") and "第 2 条" in roll_mark(2)
+                       and "PRINT" in roll_mark(2) and "<b>" not in roll_mark(2)
+                       and "line_html" in inspect.getsource(roll_mark)
+                       and "animation" not in roll_mark(7) and "transition" not in roll_mark(7))
+    ok["roll_tone"] = (roll_tone("jam") == "stop" and roll_tone("advance") == "go"
+                       and roll_tone("print") == "" and roll_label("jam").startswith("卡纸")
+                       and roll_label("nope") == "nope")
+    ok["roll_progress"] = (roll_progress("idle") == 0.0 and roll_progress("tear") == 1.0
+                           and 0.0 < roll_progress("print") < 1.0 and roll_progress("nope") == 0.0)
+    ok["roll_should_jam"] = (roll_should_jam(0) is False and roll_should_jam(ROLL_MAX_STRIKE - 1) is False
+                             and roll_should_jam(ROLL_MAX_STRIKE) is True and roll_should_jam(9) is True
+                             and roll_should_jam(None) is False)
+    ok["qss_roll"] = all('QFrame#mouth[st="%s"]' % k in q for k in ("print", "advance", "tear", "jam"))
+    ok["qss_eink_resident"] = ('QFrame#einkzone[resident="1"]' in q and "QLabel#einkStat{" in q
+                            and "QLabel#rollTag[st=" in q and "${" not in q)
+    ok["eink_resident_right"] = ("ez.hide()" not in seg_code and "av.addWidget(ez)" not in seg_code
+                                 and "psplit.addWidget(ez)" in seg_code
+                                 and 'ez.setProperty("resident", "1")' in seg_code
+                                 and 'w["eink_stat"] = est' in seg_code
+                                 and "ez.setMinimumHeight(150)" in seg_code
+                                 and seg_code.count("root.addWidget(") == 2
+                                 and '"\u25a4 墨水屏消息面板 \u00b7 C\uff08\u5e38\u9a7b\u53f3\u680f\u4e0a\u683c' in seg)
     pf = ("sub" + "process", "Q" + "Process", "soc" + "ket", "HTTP" + "Server",
           "serve_" + "forever", "os." + "system")   # 拆字面量：判据自身不得含被检串（否则镜像件恒假阴·本批补踩）
     ok["assembly_no_process_face"] = (not any(x in seg_code for x in pf)
@@ -890,9 +1045,18 @@ def selftest():
                           and term_line_kind("JAM 卡纸") == "err" and term_line_kind("rc=1") == "err"
                           and term_line_kind("Traceback x") == "err" and term_line_kind("hello") == "out"
                           and term_line_kind("") == "out" and TERM_PROMPT == "$ ")
+    ok["assembly_compact_right"] = ('pvz.setToolTip("' in seg_code and 'tmz.setToolTip("' in seg_code
+                                     and seg_code.count("_zone(") == 4
+                                     and 'w["feeder"] = feeder' in seg_code)
+    ok["assembly_min_width"] = ("feeder.setMinimumWidth(320)" in seg_code
+                                and "tray.setMinimumWidth(430)" in seg_code
+                                and "pvz.setMinimumWidth(300)" in seg_code
+                                and "tmz.setMinimumWidth(300)" in seg_code)
     ok["fw_batch41_keys"] = all(('w["%s"]' % k) in seg_code for k in
                                 ("split", "psplit", "preview", "previewzone", "pv_open", "pv_stat",
-                                 "term", "termzone", "term_in", "t_stat"))
+                                 "term", "termzone", "term_in", "t_stat", "roll_tag", "eink_stat"))
+    ok["fw_roll_parts"] = ('w["roll_tag"] = QLabel(roll_label("idle"))' in seg_code
+                           and 'w["eink_stat"] = est' in seg_code and '"roll"' in seg_code)
     print("FAX_SELFTEST " + json.dumps(ok, ensure_ascii=False))
     return 0 if (ok["meta"] >= 30 and ok["qss_gradient"] and ok["qss_shapes"] and ok["line_html"]
                  and ok["jam"] and ok["no_token_face"] and ok["page_bytes"] > 1000
@@ -904,8 +1068,12 @@ def selftest():
                  and ok["view_cycle5"] and ok["qss_split"] and ok["qss_preview"] and ok["qss_terminal"]
                  and ok["build_split_assembly"] and ok["build_preview_parts"]
                  and ok["build_terminal_parts"] and ok["build_feeder_first"]
-                 and ok["assembly_no_process_face"] and ok["fw_batch41_keys"]
-                 and ok["preview_helpers"] and ok["term_helpers"] and ok["api_query_get"]) else 1
+                 and ok["split_layout_ok"] and ok["assembly_no_process_face"] and ok["fw_batch41_keys"]
+                 and ok["preview_helpers"] and ok["term_helpers"] and ok["api_query_get"]
+                 and ok["assembly_min_width"] and ok["assembly_compact_right"]
+                 and ok["roll_cycle"] and ok["roll_mark"] and ok["roll_tone"] and ok["roll_progress"]
+                 and ok["roll_should_jam"] and ok["qss_roll"] and ok["qss_eink_resident"]
+                 and ok["eink_resident_right"] and ok["fw_roll_parts"]) else 1
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

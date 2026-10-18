@@ -57,7 +57,7 @@ class ShellApp(Menus, Index, Ws, Mode, Perms, Flow, Taskbar, Web, App):
             import shell_lifecycle as lc
             hint, nxt = lc.resume()
             hint and self.log_line(Text(hint, style="bold magenta"))
-            nxt and self.set_timer(1.5, lambda: self.submit(nxt))  # 重启后自动续跑未完成任务表
+            nxt and self.set_timer(1.5, lambda: self.submit(nxt))  # 重启后自动续跑未完成任务总览
         except Exception: pass
     def spin_tick(self):
         """1s 一次：把「藏 #prog」请求交回 UI 线程消费（停 15fps 整屏重绘＝归还核子）。"""
